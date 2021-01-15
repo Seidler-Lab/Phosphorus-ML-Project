@@ -1,3 +1,4 @@
 # Phosphorus Machine Learning Project
 
-#### Authers: Samantha Tetef and Vikram Kashyap
+#### Authors: Samantha Tetef and Vikram Kashyap
+
