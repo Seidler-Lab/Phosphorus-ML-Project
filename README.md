@@ -2,11 +2,7 @@
 
 #### Authors: Samantha Tetef and Vikram Kashyap
 
-Not in this GitHub Repo are 3 data folders:
-1. Hyak/
-2. Cascade/
-3. ProcessedData/
+Not in this GitHub Repo is the data folder:
+1. `ProcessedData/`
 
-The Hyak and Cascade folders each have an XES and XANES subdirectory to put .dat files from their respective supercomputers.
-
-The ProcessedData folder is where processed spectrum files go after the Dat_to_Spectra jupyter notebook. Each compound is organized by CID in this directory.
+The `ProcessedData` directory has the .dat files, formatted as CID_xes.dat or CID_xanes.dat, along with their respective .processedspectrum files, which are obtained from broadening the dipole transitions in the .dat files.
