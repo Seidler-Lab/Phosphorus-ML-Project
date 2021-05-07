@@ -81,10 +81,11 @@ def plot_spectrum(spectrum, compound, verbose=True, label=None):
 
     fig, ax = plt.subplots(figsize=(8,6))
 
-    ax.plot(x, y, 'k-', linewidth=1, label=compound)
+    ax.plot(x, y, 'k-', linewidth=2, label=compound)
 
     plt.title(f'CID {compound}', fontsize=20)
     plt.xlabel('Energy (eV)', fontsize=18)
+    plt.ylabel('Intensity (arb. units)', fontsize=18)
     plt.tick_params(labelsize=16)
 
     if verbose:
