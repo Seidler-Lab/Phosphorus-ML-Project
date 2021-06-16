@@ -45,11 +45,15 @@ def plot_spectrum_and_trans(spectrum, transitions, compound,
     x, y = spectrum
     xs, ys = transitions
 
+    # rescaling transitions
+    ys = ys / np.max(ys)
+    ys = ys * np.max(y)
+
     fig, ax = plt.subplots(figsize=(8,6))
 
     ax.plot(x, y, 'k-')
     
-    markerline, stemlines, baseline = ax.stem(xs, ys / max(ys), linefmt='r-',
+    markerline, stemlines, baseline = ax.stem(xs, ys, linefmt='r-',
                                               markerfmt='ro',
                                               use_line_collection=True)
     plt.setp(baseline, visible=False)
