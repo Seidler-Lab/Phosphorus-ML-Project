@@ -43,7 +43,7 @@ def linear_broaden_from_transitions(transitions, lorentz_ev_start=0.5, numpoints
     x, y = transitions
 
     xmin = 2090
-    xmax = 2120
+    xmax = 2125
     padding = 5
     x_eval = np.linspace(xmin - padding, xmax + padding, numpoints)
 
@@ -194,7 +194,7 @@ if __name__ == '__main__':
     # from Holden
     # xanes: 50
     # A K-edge P XANES study of phosphorus compounds in solution, Persson
-    transitions = energy_shift(transitions, result.eshift)
+    spectrum = energy_shift(spectrum, result.eshift)
 
     outputfile = result.filename.split('/')[-1].split('.')[0]
     if outputfile == '':
