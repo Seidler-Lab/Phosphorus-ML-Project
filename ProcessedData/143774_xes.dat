@@ -1,0 +1,24 @@
+# ================================
+#  NWChem spectrum parser ver 2.2
+# ================================
+# 
+# Parser runtime options: {'infile': '/gscratch/stf/vkashyap/nwxpl/work/143774/xescalc/output.out', 'outfile': '/gscratch/stf/vkashyap/nwxpl/work/143774/xescalc/xes.dat', 'datafmt': 'auto', 'width': 0.1, 'nbin': 20, 'npoints': 2000, 'units': 'ev', 'delim': '    ', 'makespec': False, 'header': True, 'cchar': '#', 'verbose': False}
+#
+# The input appears to contain TDDFT data.
+# Successfully parsed 11 TDDFT singlet excitations
+# Roots not broadened
+# No spectrum generated: output is list of raw excitations
+#
+#  Energy [eV]         Abs. [au]   
+#----------------------------------
+2.1562759000e+03    3.7200000000e-03
+2.1561741000e+03    3.9800000000e-03
+2.1529298000e+03    2.9500000000e-03
+2.1505599000e+03    5.0000000000e-04
+2.1477379000e+03    2.0000000000e-04
+2.1427229000e+03    3.8000000000e-04
+2.0217203000e+03    8.6910000000e-02
+2.0217171000e+03    8.6350000000e-02
+2.0216611000e+03    8.6740000000e-02
+1.9763161000e+03    0.0000000000e+00
+1.8830331000e+03    0.0000000000e+00
