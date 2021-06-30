@@ -138,7 +138,8 @@ if __name__ == '__main__':
     import argparse
     import os.path
 
-    parser = argparse.ArgumentParser(description=('Script to generate spectra '
+    parser = argparse.ArgumentParser(
+        description=('Script to generate spectra '
         'and/or plots from transitions calculated by NWChem.'))
 
     parser.add_argument('-f', action='store', dest='filename', type=str,
@@ -156,7 +157,7 @@ if __name__ == '__main__':
         type=float,
         help='Set energy max (eV).')
     parser.add_argument('-eshift', action='store', dest='eshift',
-    	default = 0,
+    	default=0,
         type=float,
         help='Energy shift of spectra (eV) to match experiment.')
     parser.add_argument('-lb', action='store_true', default=False, dest='linear_broaden', 
