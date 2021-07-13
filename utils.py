@@ -9,12 +9,14 @@ from matplotlib.ticker import MultipleLocator, FormatStrFormatter, AutoMinorLoca
 import subprocess
 import os
 import shutil
-
+from pathlib import Path
 
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
 
 
+'''
+OLD VERSION, without type classification lists
 def get_Data(compound_list, mode='xes'):
     Data = []
     iterator = 1
@@ -30,7 +32,27 @@ def get_Data(compound_list, mode='xes'):
         print(f'{iterator}\r', end="")
         iterator += 1
     return Data
+'''
 
+def get_Data(cidlistdir, mode='xes'):
+    Data = []
+    counter = 0
+    for typelist in cidlistdir.glob('*.list'):
+        with open(typelist) as f:
+            compound_list = [int(cid) for cid in f.read().splitlines()]
+        for compound in compound_list:
+            spectrum = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_{mode}.processedspectrum')
+            transitions = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_{mode}.dat')
+
+            temp_dict = {'CID': compound, 'Spectra': spectrum,
+                         'Transitions': np.flip(transitions, axis=1),
+                         'Type': typelist.stem}
+            Data.append(temp_dict)
+            print(f'{counter}\r', end="")
+            counter += 1
+    return Data
 
 def get_Property(Dict_list, myproperty):
     temp = []
