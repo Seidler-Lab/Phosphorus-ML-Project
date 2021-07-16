@@ -17,7 +17,8 @@ def read_tddft_spectrum_file(path):
 
 '''
 OLD VERSION, without type classification lists
-def get_Data(compound_list, mode='xes'):
+'''
+def get_all_Data(compound_list, mode='xes'):
     Data = []
     iterator = 1
     for compound in compound_list:
@@ -32,7 +33,6 @@ def get_Data(compound_list, mode='xes'):
         print(f'{iterator}\r', end="")
         iterator += 1
     return Data
-'''
 
 def get_Data(cidlistdir, mode='xes'):
     Data = []
@@ -129,3 +129,29 @@ def plot_spectrum(spectrum, compound, verbose=True, label=None):
             item.set_visible(False)
     
     plt.show()
+
+
+def esnip(trans, spectra, energy=[], mode='xes', emin=0):
+    x, y = trans
+    
+    if mode == 'xes':
+        for i, e in enumerate(x):
+            if e >= emin:
+                break
+        x = x[i:]
+        y = y[i:]
+    
+        if x[-1] < 0:
+            return x[:-1] - 19, y[:-1]
+        x = x - 19
+        y = y/np.max(spectra)
+
+    elif mode == 'xanes':
+        x = x + 50
+        whiteline = energy[np.argmax(spectra)]
+        maxE = whiteline + 20
+        bool_arr = x < maxE
+        x = x[bool_arr]
+        y = y[bool_arr]
+    
+    return x, y

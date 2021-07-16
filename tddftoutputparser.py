@@ -55,7 +55,7 @@ def linear_broaden_from_transitions(transitions, lorentz_ev_start=0.5, numpoints
     lorentz_ev = np.zeros_like(x_eval)
     lorentz_ev[:whiteline_index] = lorentz_ev_start
 
-    index_of_max_broadening = index_from_energy(x_eval, whiteline_E + 15)
+    index_of_max_broadening = index_from_energy(x_eval, whiteline_E + 20)
     lorentz_ev_max = 4.0
 
     lorentz_ev[index_of_max_broadening:] = lorentz_ev_max
