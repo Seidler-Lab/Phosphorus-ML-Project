@@ -1,6 +1,4 @@
-"""
-This module contains commonly used functions for phosphorus data analysis.
-"""
+"""This module contains commonly used functions for phosphorus data analysis."""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,9 +9,37 @@ import os
 import shutil
 from pathlib import Path
 
+
+# GLOBAL VARIABLES
+TYPE_DICT = {
+    'phosphaalkenes': 1,
+    'trialkyl_phosphines': 1,
+    'tetraalkyl_phosphonium': 1,
+    'phosphine_oxides': 2,
+    'phosphenic_acids': 3,
+    'phosphinate': 3,
+    'phosphonic_acids': 4,
+    'phosphonate': 4,
+    'phosphite_esters': 4,
+    'phosphate_esters': 5,
+    'other': 6
+}
+"""
+TYPE_DICT = {
+    'trialkyl_phosphines': 1,
+    'tetraalkyl_phosphonium': 2,
+    'phosphine_oxides': 3,
+    'phosphenic_acids': 4,
+    'phosphinate': 5,
+    'phosphonic_acids': 6,
+    'phosphonate': 7,
+    'phosphite_esters': 8,
+    'phosphate_esters': 9
+}
+"""
+
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
-
 
 '''
 OLD VERSION, without type classification lists
@@ -48,7 +74,8 @@ def get_Data(cidlistdir, mode='xes'):
 
             temp_dict = {'CID': compound, 'Spectra': spectrum,
                          'Transitions': np.flip(transitions, axis=1),
-                         'Type': typelist.stem}
+                         'Class': typelist.stem,
+                         'Type': TYPE_DICT[typelist.stem]}
             Data.append(temp_dict)
             print(f'{counter}\r', end="")
             counter += 1
@@ -153,5 +180,5 @@ def esnip(trans, spectra, energy=[], mode='xes', emin=0):
         bool_arr = x < maxE
         x = x[bool_arr]
         y = y[bool_arr]
-    
+
     return x, y
