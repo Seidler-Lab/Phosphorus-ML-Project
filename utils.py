@@ -12,53 +12,29 @@ from pathlib import Path
 
 # GLOBAL VARIABLES
 TYPE_DICT = {
-    'phosphaalkenes': 1,
-    'trialkyl_phosphines': 1,
-    'tetraalkyl_phosphonium': 1,
-    'phosphine_oxides': 2,
-    'phosphenic_acids': 3,
-    'phosphinate': 3,
-    'phosphonic_acids': 4,
-    'phosphonate': 4,
-    'phosphite_esters': 4,
-    'phosphate_esters': 5,
-    'other': 6
+    'phosphorane': 1,
+    'trialkyl_phosphine': 2,
+    'phosphaalkene': 2,
+    'phosphinite': 3,
+    'phosphine_oxide': 3,
+    'phosphinate': 4,
+    'phosphonite': 4,
+    'phosphonate': 5,
+    'phosphite_ester': 5,
+    'hypophosphite': 5,
+    'phosphate': 6,
+    'None': 7
 }
-"""
-TYPE_DICT = {
-    'trialkyl_phosphines': 1,
-    'tetraalkyl_phosphonium': 2,
-    'phosphine_oxides': 3,
-    'phosphenic_acids': 4,
-    'phosphinate': 5,
-    'phosphonic_acids': 6,
-    'phosphonate': 7,
-    'phosphite_esters': 8,
-    'phosphate_esters': 9
-}
-"""
 
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
 
-'''
-OLD VERSION, without type classification lists
-'''
-def get_all_Data(compound_list, mode='xes'):
-    Data = []
-    iterator = 1
-    for compound in compound_list:
-        spectrum = read_tddft_spectrum_file(
-            f'ProcessedData/{compound}_{mode}.processedspectrum')
-        transitions = read_tddft_spectrum_file(
-            f'ProcessedData/{compound}_{mode}.dat')
-         
-        temp_dict = {'CID': compound, 'Spectra': spectrum,
-                     'Transitions': np.flip(transitions, axis=1)}
-        Data.append(temp_dict)
-        print(f'{iterator}\r', end="")
-        iterator += 1
-    return Data
+def exclude_None_class(ele):
+    c = ele['Class']
+    if c == 'None':
+        return False
+    else:
+        return True
 
 def get_Data(cidlistdir, mode='xes'):
     Data = []
@@ -81,8 +57,10 @@ def get_Data(cidlistdir, mode='xes'):
             counter += 1
     return Data
 
-def get_Property(Dict_list, myproperty):
+def get_Property(Dict_list, myproperty, applyfilter=None):
     temp = []
+    if applyfilter is not None:
+        Dict_list = filter(applyfilter, Dict_list)
     for ele in Dict_list:
         temp.append(ele[myproperty])
     return temp
