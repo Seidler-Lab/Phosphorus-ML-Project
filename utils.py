@@ -23,7 +23,7 @@ TYPECODES = {
     'phosphite_ester': 5,
     'hypophosphite': 5,
     'phosphate': 6,
-     'dithiophosphate': 7,
+    'dithiophosphate': 7,
     'None': 8
 }
 
@@ -56,7 +56,7 @@ Colors2 = [\
 '#fde725']
 
 # CMAP2 = ListedColormap(Colors2)
-CMAP2 = plt.cm.tab20
+CMAP2 = plt.cm.Paired
 
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
@@ -201,10 +201,10 @@ def hist(bins, classnames, label='Category', verbose=False):
     n = len(bins)
     if label == 'Type':
         cmap = CMAP1
+        Colors = cmap(x_pos/(n-1))
     else:
         cmap = CMAP2
-    
-    Colors = cmap(np.arange(n)/(n-1))
+        Colors = cmap(x_pos)
 
     fig, ax = plt.subplots(figsize=(12,6))
 
@@ -234,7 +234,7 @@ def hist(bins, classnames, label='Category', verbose=False):
     if label=='Type':
         ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=0)
         size=24
-        if verbose: plt.ylim(1,max_h + 25)
+        if verbose: plt.ylim(1,max_h + 35)
     else:
         ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=90)
         size=18
@@ -246,16 +246,28 @@ def hist(bins, classnames, label='Category', verbose=False):
     plt.show()
 
 
-def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS, mode='VtC-XES', MINIMAX=[0,-1]):
+def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS,
+    mode='VtC-XES', cmap=CMAP1, MINIMAX=[0,-1]):
     mn, mx = MINIMAX
     
     fig, ax = subplot
     
     lines = []
-    n = max(TYPECODES.values())
-    Colors = plt.cm.viridis(np.arange(n)/(n-1))
-    for x,cid,moltype in zip(X,CIDS,types):
-        bin_num = TYPECODES[moltype]
+
+    if cmap == CMAP1:
+        n = max(TYPECODES.values())
+    else:
+        classes = list(TYPECODES.keys())[:-1]
+        x = np.array([i for i, _ in enumerate(classes)])
+        n = len(x)
+
+    Colors = cmap(np.arange(n)/(n-1))
+
+    for x, cid, moltype in zip(X, CIDS, types):
+        if cmap == CMAP1:
+            bin_num = TYPECODES[moltype]
+        else:
+            bin_num = [i for i, ele in enumerate(classes) if ele == moltype][0]
         lines.append(plt.plot(energy[mn:mx], x[mn:mx] + bin_num, '-', color=Colors[bin_num], alpha=0.1,\
                               label=(str(cid)+','+str(moltype)))[0])
         
@@ -287,8 +299,13 @@ def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS, mode='Vt
 def plot_dim_red(plot, X_red, types, method, fontsize=16, mode='VtC-XES', cmap=CMAP1):
 
     fig, ax = plot
-    
-    colors = [TYPECODES[t] for t in types]
+
+    if cmap == CMAP1:
+        color_dict = TYPECODES
+    else: 
+        color_dict = {name: i for i, name in enumerate(TYPECODES.keys()) if name != 'None'}
+        
+    colors = [color_dict[t] - 1 for t in types]
     
     dots = plt.scatter(X_red[:, 0], X_red[:, 1], c=colors, cmap=cmap)
     
