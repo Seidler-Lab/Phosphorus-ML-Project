@@ -13,18 +13,23 @@ from pathlib import Path
 # GLOBAL VARIABLES
 TYPECODES = {
     'phosphorane': 1,
+    'phosphane': 2,
     'trialkyl_phosphine': 2,
     'phosphaalkene': 2,
     'phosphinite': 3,
     'phosphine_oxide': 3,
     'phosphinate': 4,
     'phosphonite': 4,
+    'phosphenic_acid': 4,
     'phosphonate': 5,
     'phosphite_ester': 5,
     'hypophosphite': 5,
+    'phosphonic_acid': 5,
     'phosphate': 6,
     'dithiophosphate': 7,
-    'None': 8
+    'phosphorothioate': 8,
+    'methylphosphonothioate': 9,
+    'None': 10
 }
 
 Colors1 = ['#440154', '#3b66b3', '#037369', '#54bf58', '#DB6400', '#e4ce0c']
@@ -56,7 +61,7 @@ Colors2 = [\
 '#fde725']
 
 # CMAP2 = ListedColormap(Colors2)
-CMAP2 = plt.cm.Paired
+CMAP2 = plt.cm.tab20
 
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
@@ -194,7 +199,7 @@ def esnip(trans, spectra, energy=[], mode='xes', emin=0):
     return x, y
 
 
-def hist(bins, classnames, label='Category', verbose=False):
+def hist(bins, classnames, label='Category', verbose=False, correlation=False):
     x = classnames
     x_pos = np.array([i for i, _ in enumerate(x)])
 
@@ -221,6 +226,11 @@ def hist(bins, classnames, label='Category', verbose=False):
                         textcoords='offset points')
             if max_h < bar.get_height():
                 max_h = bar.get_height()
+    if correlation:
+        n = np.sum(bins)
+        count = np.max(bins)
+        R = count/n
+        ax.annotate(f'R = {R:.3f}', (0.78, 0.9), xycoords='figure fraction', size=25)
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
