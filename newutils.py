@@ -324,7 +324,7 @@ def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS,
     
 
 def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', energyrange=None, \
-                   hiddencids=None, colormap=plt.cm.tab20, coloralpha=1):
+                   hiddencids=[], colormap=plt.cm.tab20, coloralpha=1):
     checkmode(mode)
     
     fig, ax = plot
@@ -340,7 +340,7 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
     
     lines = []
     for compound in X_data:
-        if hiddencids is not None and compound['CID'] in hiddencids: continue
+        if compound['CID'] in hiddencids: continue
         cid = compound['CID']
         bin_num = binmap[cid]
         lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
@@ -364,15 +364,12 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
 
 
 def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', method='t-SNE', \
-                 hiddencids=None, colormap=plt.cm.tab20, fontsize=16):
+                 hiddencids=[], colormap=plt.cm.tab20, fontsize=16):
     fig, ax = plot
     
     if colorcodemap is not None:
-        if hiddencids is not None:
-            colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,0.01) \
-                  for compound in X_data if compound['CID']]
-        else:
-            colors = [colorbynumber(colorcodemap[compound['CID']]) for compound in X_data if compound['CID']]
+        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,0.01) \
+              for compound in X_data if compound['CID']]
     else:
         colors = 'b'
     points = [redspacemap[compound['CID']] for compound in X_data if compound['CID'] not in hiddencids]
@@ -411,16 +408,24 @@ def add_point_label(pickable, X_data, otherdatamap=None):
 def add_line_label(pickable, X_data, otherdatamap=None):
     def onselect(sel):
         cid = int(sel.artist.get_label().split(',')[0])
-        compound = [c for c in X_data if c['CID']==cid][0]
+        compound = next(c for c in X_data if c['CID']==cid)
         annotation = str(cid)+','+str(compound['Type'])+','+str(compound['Class'])
         if otherdatamap is not None:
            annotation += '\n'+str(otherdatamap[cid])
         sel.annotation.set_text(annotation)
     mpl.cursor(pickable, highlight=True).connect("add", onselect)
     
-def add_pubchem_link(pickable, X_data):
+def add_point_pubchem_link(pickable, X_data):
     def onselect(sel):
         webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={X_data[sel.target.index]['CID']}&t=l")
+        sel.annotation.set_text("")
+    mpl.cursor(pickable).connect("add", onselect)
+    
+def add_line_pubchem_link(pickable, X_data):
+    def onselect(sel):
+        cid = int(sel.artist.get_label().split(',')[0])
+        compound = next(c for c in X_data if c['CID']==cid)
+        webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={compound['CID']}&t=l")
         sel.annotation.set_text("")
     mpl.cursor(pickable).connect("add", onselect)
     
