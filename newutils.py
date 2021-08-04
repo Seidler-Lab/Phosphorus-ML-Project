@@ -18,34 +18,44 @@ colorbynumber = lambda n,a=1: np.array(plt.cm.tab20(n%20))-[0,0,0,1-a]
 # GLOBAL VARIABLES
 TYPECODES = {
     'phosphorane': 1,
+    'phosphane': 2,
     'trialkyl_phosphine': 2,
     'phosphaalkene': 2,
     'phosphinite': 3,
     'phosphine_oxide': 3,
     'phosphinate': 4,
     'phosphonite': 4,
+    'phosphenic_acid': 4,
     'phosphonate': 5,
     'phosphite_ester': 5,
     'hypophosphite': 5,
+    'phosphonic_acid': 5,
     'phosphate': 6,
     'dithiophosphate': 7,
-    'None': 8
+    'phosphorothioate': 8,
+    'methylphosphonothioate': 9,
+    'None': 10
 }
 
 CLASSCODES = {
-    'phosphorane': 0,
-    'trialkyl_phosphine': 1,
-    'phosphaalkene': 2,
-    'phosphinite': 3,
-    'phosphine_oxide': 4,
-    'phosphinate': 5,
-    'phosphonite': 6,
-    'phosphonate': 7,
-    'phosphite_ester': 8,
-    'hypophosphite': 9,
-    'phosphate': 10,
-    'dithiophosphate': 11,
-    'None': 12
+    'phosphorane': 1,
+    'phosphane': 2,
+    'trialkyl_phosphine': 3,
+    'phosphaalkene': 4,
+    'phosphinite': 5,
+    'phosphine_oxide': 6,
+    'phosphinate': 7,
+    'phosphonite': 8,
+    'phosphenic_acid': 9,
+    'phosphonate': 10,
+    'phosphite_ester': 11,
+    'hypophosphite': 12,
+    'phosphonic_acid': 13,
+    'phosphate': 14,
+    'dithiophosphate': 15,
+    'phosphorothioate': 16,
+    'methylphosphonothioate': 17,
+    'None': 18
 }
 
 Colors1 = ['#440154', '#3b66b3', '#037369', '#54bf58', '#DB6400', '#e4ce0c']
