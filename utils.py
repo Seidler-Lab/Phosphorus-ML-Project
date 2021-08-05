@@ -8,6 +8,11 @@ import subprocess
 import os
 import shutil
 from pathlib import Path
+from collections import defaultdict
+import mplcursors as mpl
+import webbrowser
+
+colorbynumber = lambda n,a=1: np.array(plt.cm.tab20(n%20))-[0,0,0,1-a]
 
 
 # GLOBAL VARIABLES
@@ -32,36 +37,27 @@ TYPECODES = {
     'None': 10
 }
 
-Colors1 = ['#440154', '#3b66b3', '#037369', '#54bf58', '#DB6400', '#e4ce0c']
-# CMAP1 = ListedColormap(Colors1)
-CMAP1 = plt.cm.viridis
+CLASSCODES = {
+    'phosphorane': 1,
+    'phosphane': 2,
+    'trialkyl_phosphine': 3,
+    'phosphaalkene': 4,
+    'phosphinite': 5,
+    'phosphine_oxide': 6,
+    'phosphinate': 7,
+    'phosphonite': 8,
+    'phosphenic_acid': 9,
+    'phosphonate': 10,
+    'phosphite_ester': 11,
+    'hypophosphite': 12,
+    'phosphonic_acid': 13,
+    'phosphate': 14,
+    'dithiophosphate': 15,
+    'phosphorothioate': 16,
+    'methylphosphonothioate': 17,
+    'None': 18
+}
 
-Colors2 = [\
-
-# type 1
-'#440154',
-# type 2
-'#77b6fe',
-'#03506F',
-
-# type 3,
-'#ffba93',
-'#DB6400',
-
-# type 4
-'#54bf58',
-'#355E3B',
-
-# type 5
-'#AA524E',
-'#E17C7B',
-'#9F5F80',
-
-# type 6
-'#fde725']
-
-# CMAP2 = ListedColormap(Colors2)
-CMAP2 = plt.cm.tab20
 
 def read_tddft_spectrum_file(path):
     return np.loadtxt(path).T
@@ -73,25 +69,39 @@ def exclude_None_class(ele):
     else:
         return True
 
-def get_Data(cidlistdir, mode='xes'):
+def get_Data(cidlistdir, exclude_Nonetype_normalization=True):
     Data = []
     counter = 0
     for typelist in cidlistdir.glob('*.list'):
         with open(typelist) as f:
             compound_list = [int(cid) for cid in f.read().splitlines()]
         for compound in compound_list:
-            spectrum = read_tddft_spectrum_file(
-                f'ProcessedData/{compound}_{mode}.processedspectrum')
-            transitions = read_tddft_spectrum_file(
-                f'ProcessedData/{compound}_{mode}.dat')
+            XANES_spectrum = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_xanes.processedspectrum')
+            XANES_transitions = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_xanes.dat')
+            XES_spectrum = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_xes.processedspectrum')
+            XES_transitions = read_tddft_spectrum_file(
+                f'ProcessedData/{compound}_xes.dat')
 
-            temp_dict = {'CID': compound, 'Spectra': spectrum,
-                         'Transitions': np.flip(transitions, axis=1),
+            temp_dict = {'CID': compound,
+                         'XANES_Spectra': XANES_spectrum,
+                         'XANES_Transitions': np.flip(XANES_transitions, axis=1),
+                         'XES_Spectra': XES_spectrum,
+                         'XES_Transitions': np.flip(XES_transitions, axis=1),
                          'Class': typelist.stem,
                          'Type': TYPECODES[typelist.stem]}
+            
             Data.append(temp_dict)
             print(f'{counter}\r', end="")
             counter += 1
+            
+    XANES_scalefactor = np.max([compound['XANES_Spectra'][1] for compound in Data if compound['Class']!=None])
+    XES_scalefactor = np.max([compound['XES_Spectra'][1] for compound in Data if compound['Class']!=None])
+    for compound in Data:
+        compound['XANES_Normalized'] = compound['XANES_Spectra'][1]/XANES_scalefactor
+        compound['XES_Normalized'] = compound['XES_Spectra'][1]/XES_scalefactor
     return Data
 
 def get_Property(Dict_list, myproperty, applyfilter=None):
@@ -102,6 +112,9 @@ def get_Property(Dict_list, myproperty, applyfilter=None):
         temp.append(ele[myproperty])
     return temp
 
+def enumerate_unique(a):
+    d = {x:i for i, x in enumerate(set(a))}
+    return [d[item] for item in a]
 
 def plot_spectrum_and_trans(spectrum, transitions, compound,
                             verbose=True, label=None):
@@ -199,125 +212,107 @@ def esnip(trans, spectra, energy=[], mode='xes', emin=0):
     return x, y
 
 
-def hist(bins, classnames, label='Category', verbose=False, correlation=False):
-    x = classnames
-    x_pos = np.array([i for i, _ in enumerate(x)])
+def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
 
-    n = len(bins)
-    if label == 'Type':
-        cmap = CMAP1
-        Colors = cmap(x_pos/(n-1))
-    else:
-        cmap = CMAP2
-        Colors = cmap(x_pos)
+    fig, ax = plt.subplots(figsize=(len(labels),6))
 
-    fig, ax = plt.subplots(figsize=(12,6))
+    width = 0.9
+    x_pos = np.array([i for i, _ in enumerate(labels)])
+    colors = colormap(x_pos)
+    bars = ax.bar(x_pos, bins, width=width, color=colors)
 
-    width=0.9
-    bars = ax.bar(x_pos, bins, width=width, color=Colors)
-    
     if verbose:
         max_h = 0
         for i,bar in enumerate(bars.patches):
-            ax.annotate(f'{i+1}\n({bar.get_height()})', 
-                        (bar.get_x() + bar.get_width() / 2, 
-                        bar.get_height()), ha='center', va='bottom',
-                        size=22, xytext=(0, 8),
+            ax.annotate(f'{i+1}\n({bar.get_height()})',
+                        (bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                        ha='center', va='bottom',
+                        size=18, xytext=(0, 8),
                         textcoords='offset points')
             if max_h < bar.get_height():
                 max_h = bar.get_height()
-    if correlation:
-        n = np.sum(bins)
-        count = np.max(bins)
-        R = count/n
-        ax.annotate(f'R = {R:.3f}', (0.78, 0.9), xycoords='figure fraction', size=25)
+        plt.ylim(1, max_h + 30)
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
-    plt.xticks(x_pos, x, fontsize=22)
+    plt.xticks(x_pos, labels, fontsize=22)
 
     ax.set_ylabel('Counts', fontsize=24)
-    ax.set_xlabel(label, fontsize=24)
-
+    if xlabel is not None:
+    	ax.set_xlabel(xlabel, fontsize=24)
     ax.tick_params(axis='y', direction='in', width=3, length=9)
-    
-    if label=='Type':
-        ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=0)
-        size=24
-        if verbose: plt.ylim(1,max_h + 35)
-    else:
-        ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=90)
-        size=18
-        if verbose: plt.ylim(1,max_h + 30)
 
+    if len(labels) < 10:
+        angle = 0
+        size = 24
+    else:
+        angle = 90
+        size = 20
+
+    ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=angle)
     plt.setp(ax.get_xticklabels(), Fontsize=size)
     plt.setp(ax.get_yticklabels(), Fontsize=20)
 
     plt.show()
 
 
-def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS,
-    mode='VtC-XES', cmap=CMAP1, MINIMAX=[0,-1]):
-    mn, mx = MINIMAX
+def checkmode(mode):
+    if mode not in ('XANES', 'XES'): raise ValueError('mode must be XANES or XES')
+
+
+def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', energyrange=None, \
+                   hiddencids=[], colormap=plt.cm.tab20, coloralpha=1, hiddenalpha=0.01):
+    checkmode(mode)
+    fig, ax = plot
     
-    fig, ax = subplot
+    if energyrange is not None:
+        plt.xlim(energyrange)
+    
+    if binmap is None:
+        binmap = defaultdict(lambda: 0)
+
+    if colorcodemap is None:
+        colorcodemap = defaultdict(lambda: 0)
     
     lines = []
-
-    if cmap == CMAP1:
-        n = max(TYPECODES.values())
-    else:
-        classes = list(TYPECODES.keys())[:-1]
-        x = np.array([i for i, _ in enumerate(classes)])
-        n = len(x)
-
-    Colors = cmap(np.arange(n)/(n-1))
-
-    for x, cid, moltype in zip(X, CIDS, types):
-        if cmap == CMAP1:
-            bin_num = TYPECODES[moltype]
+    for compound in X_data:
+        cid = compound['CID']
+        bin_num = binmap[cid]
+        if cid in hiddencids: color = (0,0,0,hiddenalpha)
         else:
-            bin_num = [i for i, ele in enumerate(classes) if ele == moltype][0]
-        lines.append(plt.plot(energy[mn:mx], x[mn:mx] + bin_num, '-', color=Colors[bin_num], alpha=0.1,\
-                              label=(str(cid)+','+str(moltype)))[0])
-        
+            color = list(colormap(colorcodemap[cid]))
+            color[3]=coloralpha
+        lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
+                              color=color, \
+                              label=(str(cid)+','+str(compound['Type'])))[0])
     plt.title(f"{mode} Spectra", fontsize=30)
     
     plt.xlabel('Energy (eV)', fontsize=26)
     ax.tick_params(direction='in', width=2, length=8)
     plt.xticks(fontsize=20)
     
-    if mode == 'XANES' or mode == 'VtC-XES':
-        ax.xaxis.set_minor_locator(MultipleLocator(2))
-        ax.xaxis.set_major_locator(MultipleLocator(10))
+    ax.xaxis.set_minor_locator(MultipleLocator(2))
+    ax.xaxis.set_major_locator(MultipleLocator(10))
     
     ax.tick_params(direction='in', width=2, length=10, which='major')
     ax.tick_params(direction='in', width=1, length=8, which='minor')
     plt.yticks([])
     
-    '''
-    mplcursors.cursor(lines, highlight=True, \
-                      highlight_kwargs={'color':'pink', 'alpha':1, 'linewidth':3, 'markeredgewidth':0})
-                     #.connect("add", lambda sel: webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={CIDS[sel.target.index]}&t=l"))
-    '''
-    
     plt.show()
-    
     return lines
 
 
-def plot_dim_red(plot, X_red, types, method, fontsize=16, mode='VtC-XES', cmap=CMAP1):
-
+def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', method='t-SNE', \
+                 hiddencids=[], colormap=plt.cm.tab20, fontsize=16):
     fig, ax = plot
-
-    if cmap == CMAP1:
-        color_dict = TYPECODES
-    else: 
-        color_dict = {name: i for i, name in enumerate(TYPECODES.keys()) if name != 'None'}
-        
-    colors = [color_dict[t] - 1 for t in types]
     
-    dots = plt.scatter(X_red[:, 0], X_red[:, 1], c=colors, cmap=cmap)
+    if colorcodemap is not None:
+        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,0.01) \
+              for compound in X_data if compound['CID']]
+    else:
+        colors = 'b'
+    points = [redspacemap[compound['CID']] for compound in X_data if compound['CID'] not in hiddencids]
+    dots = ax.scatter(*zip(*points), c=colors)
     
     plt.xticks(fontsize=fontsize+3)
     plt.yticks(fontsize=fontsize+3)
@@ -327,7 +322,8 @@ def plot_dim_red(plot, X_red, types, method, fontsize=16, mode='VtC-XES', cmap=C
     ax.tick_params(direction='in', width=2, length=8)
     
     legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
-                           fancybox=True, fontsize=22)
+                           fancybox=True, fontsize=fontsize)
+
     for item in legend.legendHandles:
         item.set_visible(False)
     
@@ -335,5 +331,53 @@ def plot_dim_red(plot, X_red, types, method, fontsize=16, mode='VtC-XES', cmap=C
     ax.axes.yaxis.set_visible(False)
         
     plt.show()
-    
     return dots
+
+
+def add_point_label(pickable, X_data, otherdatamap=None):
+    def onselect(sel):
+        compound = X_data[sel.target.index]
+        cid = compound['CID']
+        annotation = str(cid)+','+str(compound['Type'])+','+str(compound['Class'])
+        if otherdatamap is not None:
+           annotation += '\n'+str(otherdatamap[cid])
+        sel.annotation.set_text(annotation)
+    mpl.cursor(pickable, highlight=True).connect("add", onselect)
+
+def add_line_label(pickable, X_data, otherdatamap=None):
+    def onselect(sel):
+        cid = int(sel.artist.get_label().split(',')[0])
+        compound = next(c for c in X_data if c['CID']==cid)
+        annotation = str(cid)+','+str(compound['Type'])+','+str(compound['Class'])
+        if otherdatamap is not None:
+           annotation += '\n'+str(otherdatamap[cid])
+        sel.annotation.set_text(annotation)
+    mpl.cursor(pickable, highlight=True).connect("add", onselect)
+    
+def add_point_pubchem_link(pickable, X_data):
+    def onselect(sel):
+        webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={X_data[sel.target.index]['CID']}&t=l")
+        sel.annotation.set_text("")
+    mpl.cursor(pickable).connect("add", onselect)
+    
+def add_line_pubchem_link(pickable, X_data):
+    def onselect(sel):
+        cid = int(sel.artist.get_label().split(',')[0])
+        compound = next(c for c in X_data if c['CID']==cid)
+        webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={compound['CID']}&t=l")
+        sel.annotation.set_text("")
+    mpl.cursor(pickable).connect("add", onselect)
+    
+def get_correlation(cids, clusters1, clustermap1, clustermap2):
+    matchfrac_count = 0
+    for cluster in clusters1:
+        clustercids = [cid for cid in cids if clustermap1[cid]==cluster]
+        matchcount = 0
+        if len(clustercids)==1:
+            continue
+        for i,cid1 in enumerate(clustercids):
+            for cid2 in clustercids[i+1:]:
+                if clustermap2[cid1]==clustermap2[cid2]:
+                    matchcount+=1
+        matchfrac_count += matchcount/(2*len(clustercids)*(len(clustercids)-1))
+    return matchfrac_count/len(clusters1)
