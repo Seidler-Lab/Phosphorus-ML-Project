@@ -324,9 +324,8 @@ def Rainbow_spaghetti_plot_types_stack(subplot, energy, X, types, CIDS,
     
 
 def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', energyrange=None, \
-                   hiddencids=[], colormap=plt.cm.tab20, coloralpha=1):
+                   hiddencids=[], colormap=plt.cm.tab20, coloralpha=1, hiddenalpha=0.01):
     checkmode(mode)
-    
     fig, ax = plot
     
     if energyrange is not None:
@@ -340,11 +339,14 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
     
     lines = []
     for compound in X_data:
-        if compound['CID'] in hiddencids: continue
         cid = compound['CID']
         bin_num = binmap[cid]
+        if cid in hiddencids: color = (0,0,0,hiddenalpha)
+        else:
+            color = list(colormap(colorcodemap[cid]))
+            color[3]=coloralpha
         lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
-                              color=colormap(colorcodemap[cid]), alpha=coloralpha, \
+                              color=color, \
                               label=(str(cid)+','+str(compound['Type'])))[0])
     plt.title(f"{mode} Spectra", fontsize=30)
     
