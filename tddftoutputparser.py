@@ -67,7 +67,7 @@ def linear_broaden_from_transitions(transitions, lorentz_ev_start=0.5, numpoints
 
     for e, a in zip(x, y):
 
-        if not (e > whiteline_E + 20):
+        if not (e > whiteline_E + 15):
             spectrum += a * Lorentzian(x_eval, e, lorentz_ev[index_from_energy(x_eval, e)]/2)
 
     if peaknorm:

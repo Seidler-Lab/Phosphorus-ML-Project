@@ -263,17 +263,27 @@ def checkmode(mode):
 def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', energyrange=None, \
                    hiddencids=None, colormap=plt.cm.tab20, coloralpha=1, hiddenalpha=0.01, **kwargs):
     checkmode(mode)
+
     fig, ax = plot
     
-    if hiddencids is None: hiddencids=[]
-    else: hiddencids = hiddencids.copy()
+    title = f"{mode} Spectra"
+
+    if hiddencids is None:
+        hiddencids=[]
+    else:
+        hiddencids = hiddencids.copy()
     if 'CID' in kwargs:
-        if type(kwargs['CID'])==int: hiddencids += [c['CID'] for c in X_data if c['CID'] != kwargs['CID']]
-        else: hiddencids += [c['CID'] for c in X_data if c['CID'] not in kwargs['CID']]
-    elif 'Class' in kwargs: hiddencids += [c['CID'] for c in X_data if c['Class'] not in kwargs['Class']]
+        if type(kwargs['CID'])==int:
+            hiddencids += [c['CID'] for c in X_data if c['CID'] != kwargs['CID']]
+        else:
+            hiddencids += [c['CID'] for c in X_data if c['CID'] not in kwargs['CID']]
+    elif 'Class' in kwargs:
+        hiddencids += [c['CID'] for c in X_data if c['Class'] not in kwargs['Class']]
     elif 'Type' in kwargs:
-        if type(kwargs['Type'])==int: hiddencids += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
-        else: hiddencids += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
+        if type(kwargs['Type'])==int:
+            hiddencids += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
+        else:
+            hiddencids += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
     
     if energyrange is not None:
         plt.xlim(energyrange)
@@ -288,14 +298,25 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
     for compound in X_data:
         cid = compound['CID']
         bin_num = binmap[cid]
-        if cid in hiddencids: color = (0,0,0,hiddenalpha)
+        plot = True
+        if cid in hiddencids:
+            if hiddenalpha == 0:
+                plot = False
+            else:
+                color = (0,0,0,hiddenalpha)
         else:
             color = list(colormap(colorcodemap[cid]))
             color[3]=coloralpha
-        lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
+        if plot:
+            lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
                               color=color, \
                               label=(str(cid)+','+str(compound['Type'])))[0])
-    plt.title(f"{mode} Spectra", fontsize=30)
+
+    if bool(kwargs):
+        title = title + f': {[v for k, v in kwargs.items()][0]}'
+    if mode == 'XES':
+        title = 'VtC-' + title
+    plt.title(title, fontsize=30)
     
     plt.xlabel('Energy (eV)', fontsize=26)
     ax.tick_params(direction='in', width=2, length=8)
@@ -313,24 +334,31 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
 
 
 def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', method='t-SNE', \
-                 hiddencids=None, colormap=plt.cm.tab20, fontsize=16, **kwargs):
+                 hiddencids=None,  hiddenalpha=0.01, colormap=plt.cm.tab20, fontsize=16, **kwargs):
     fig, ax = plot
     
-    if hiddencids is None: hiddencids=[]
-    else: hiddencids = hiddencids.copy()
+    if hiddencids is None:
+        hiddencids=[]
+    else:
+        hiddencids = hiddencids.copy()
     if 'CID' in kwargs:
-        if type(kwargs['CID'])==int: hiddencids += [c['CID'] for c in X_data if c['CID'] != kwargs['CID']]
-        else: hiddencids += [c['CID'] for c in X_data if c['CID'] not in kwargs['CID']]
-    elif 'Class' in kwargs: hiddencids += [c['CID'] for c in X_data if c['Class'] not in kwargs['Class']]
+        if type(kwargs['CID'])==int:
+            hiddencids += [c['CID'] for c in X_data if c['CID'] != kwargs['CID']]
+        else:
+            hiddencids += [c['CID'] for c in X_data if c['CID'] not in kwargs['CID']]
+    elif 'Class' in kwargs:
+        hiddencids += [c['CID'] for c in X_data if c['Class'] not in kwargs['Class']]
     elif 'Type' in kwargs:
-        if type(kwargs['Type'])==int: hiddencids += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
-        else: hiddencids += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
+        if type(kwargs['Type'])==int:
+            hiddencids += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
+        else:
+            hiddencids += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
     
     if colorcodemap is not None:
-        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,0.01) \
-              for compound in X_data if compound['CID']]
+        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,hiddenalpha) \
+              for compound in X_data]
     else:
-        colors = ['k' if compound['CID'] not in hiddencids else (0,0,0,0.01) for compound in X_data if compound['CID']]
+        colors = ['k' if compound['CID'] not in hiddencids else (0,0,0,hiddenalpha) for compound in X_data if compound['CID']]
     points = [redspacemap[compound['CID']] for compound in X_data]
     dots = ax.scatter(*zip(*points), c=colors)
         
@@ -341,6 +369,8 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', m
     ax.set_ylabel(f"{method} [1]", fontsize=fontsize+6)
     ax.tick_params(direction='in', width=2, length=8)
     
+    if mode == 'XES':
+        mode = 'VtC-' + mode
     legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize)
 
