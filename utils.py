@@ -12,7 +12,7 @@ from collections import defaultdict
 import mplcursors as mpl
 import webbrowser
 
-colorbynumber = lambda n,a=1: np.array(plt.cm.tab20(n%20))-[0,0,0,1-a]
+colorbynumber = lambda n,a=1: np.array(plt.cm.tab20((n - 1)%20/20))-[0,0,0,1-a]
 
 
 # GLOBAL VARIABLES
@@ -231,7 +231,7 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
                         textcoords='offset points')
             if max_h < bar.get_height():
                 max_h = bar.get_height()
-        plt.ylim(1, max_h + 30)
+        plt.ylim(1, max_h + 35)
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
@@ -293,6 +293,8 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
 
     if colorcodemap is None:
         colorcodemap = defaultdict(lambda: 0)
+
+    colorbynumber = lambda n,a=1: np.array(colormap((n - 1)%20/20))-[0,0,0,1-a]
     
     lines = []
     for compound in X_data:
@@ -305,7 +307,7 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
             else:
                 color = (0,0,0,hiddenalpha)
         else:
-            color = list(colormap(colorcodemap[cid]))
+            color = list(colorbynumber((colorcodemap[cid])))
             color[3]=coloralpha
         if plot:
             lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
