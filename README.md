@@ -15,4 +15,4 @@ All metedata belong to individual compounds is located in:
 
 2. `Database/`
 
-The `Database` directory has .jmf files named by the PubChem compound identification number (CID). The database is managed by our package `moldl`. See [](https://github.com/vikramkashyap/moldl) for the `moldl` repository.
+The `Database` directory has .jmf files named by the PubChem compound identification number (CID). The database is managed by our package `moldl`. See [github.com/vikramkashyap/moldl](https://github.com/vikramkashyap/moldl) for the `moldl` repository.
