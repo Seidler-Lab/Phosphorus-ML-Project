@@ -12,7 +12,7 @@ from collections import defaultdict
 import mplcursors as mpl
 import webbrowser
 
-colorbynumber = lambda n,a=1: np.array(plt.cm.tab20((n - 1)%20/20))-[0,0,0,1-a]
+colorbynumber = lambda n,a=1: np.array(plt.cm.tab20((n - 1)%20/19))-[0,0,0,1-a]
 
 
 # GLOBAL VARIABLES
@@ -52,10 +52,31 @@ CLASSCODES = {
     'hypophosphite': 12,
     'phosphonic_acid': 13,
     'phosphate': 14,
-    'dithiophosphate': 15,
-    'phosphorothioate': 16,
-    'methylphosphonothioate': 17,
-    'None': 18
+    'dithiophosphate': 17,
+    'phosphorothioate': 18,
+    'methylphosphonothioate': 19,
+    'None': 20
+}
+
+COORDCODES = {
+    'phosphorane': 4,
+    'phosphane': 1,
+    'trialkyl_phosphine': 3,
+    'phosphaalkene': 2,
+    'phosphinite': 3,
+    'phosphine_oxide': 4,
+    'phosphinate': 4,
+    'phosphonite': 3,
+    'phosphenic_acid': 4,
+    'phosphonate': 4,
+    'phosphite_ester': 3,
+    'hypophosphite': 2,
+    'phosphonic_acid': 4,
+    'phosphate': 4,
+    'dithiophosphate': 4,
+    'phosphorothioate': 4,
+    'methylphosphonothioate': 4,
+    'None': 0
 }
 
 
@@ -214,11 +235,26 @@ def esnip(trans, spectra, energy=[], mode='xes', emin=0):
 
 def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
 
-    fig, ax = plt.subplots(figsize=(len(labels),6))
+    if verbose:
+        fig, ax = plt.subplots(figsize=(len(labels)*1.3, 6))
+    else:
+        if len(labels) > 3:
+            fig, ax = plt.subplots(figsize=(len(labels)-1, 1))
+        else:
+            fig, ax = plt.subplots(figsize=(4, 1))
+
+    colorbynumber = lambda n,a=1: np.array(colormap((n - 1)%20/19))-[0,0,0,1-a]
 
     width = 0.9
     x_pos = np.array([i for i, _ in enumerate(labels)])
-    colors = colormap(x_pos)
+    if type(labels[0]) == str:
+        if xlabel == 'Class':
+            classnums = np.array([CLASSCODES[classname] for classname in labels])
+            colors = list(colorbynumber(classnums))
+        else:
+            colors = list(colorbynumber((x_pos)))
+    else:
+        colors = list(colorbynumber((labels)))
     bars = ax.bar(x_pos, bins, width=width, color=colors)
 
     if verbose:
@@ -231,23 +267,32 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
                         textcoords='offset points')
             if max_h < bar.get_height():
                 max_h = bar.get_height()
-        plt.ylim(1, max_h + 35)
+        plt.ylim(1, max_h*1.2)
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
     plt.xticks(x_pos, labels, fontsize=22)
 
-    ax.set_ylabel('Counts', fontsize=24)
+    if verbose:
+        ax.set_ylabel('Counts', fontsize=24)
+    else:
+        ax.axes.yaxis.set_visible(False)
+
     if xlabel is not None:
     	ax.set_xlabel(xlabel, fontsize=24)
     ax.tick_params(axis='y', direction='in', width=3, length=9)
 
     if len(labels) < 10:
-        angle = 0
+        if not verbose:
+            angle = 90
+        else:
+            angle = 0
         size = 24
     else:
         angle = 90
         size = 20
+
+
 
     ax.tick_params(axis='x',direction='out', width=3, length=9, labelrotation=angle)
     plt.setp(ax.get_xticklabels(), Fontsize=size)
@@ -261,7 +306,8 @@ def checkmode(mode):
 
 
 def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', energyrange=None, \
-                   hiddencids=None, colormap=plt.cm.tab20, coloralpha=1, hiddenalpha=0.01, **kwargs):
+                   hiddencids=None, colormap=plt.cm.tab20, coloralpha=1, hiddenalpha=0.01,
+                   linewidth=1, scale=False, **kwargs):
     checkmode(mode)
 
     fig, ax = plot
@@ -289,12 +335,10 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
         plt.xlim(energyrange)
     
     if binmap is None:
-        binmap = defaultdict(lambda: 0)
+        binmap = defaultdict(lambda: 1)
 
     if colorcodemap is None:
-        colorcodemap = defaultdict(lambda: 0)
-
-    colorbynumber = lambda n,a=1: np.array(colormap((n - 1)%20/20))-[0,0,0,1-a]
+        colorcodemap = defaultdict(lambda: 1)
     
     lines = []
     for compound in X_data:
@@ -308,14 +352,20 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
                 color = (0,0,0,hiddenalpha)
         else:
             color = list(colorbynumber((colorcodemap[cid])))
-            color[3]=coloralpha
+            color[3] = coloralpha
         if plot:
-            lines.append(plt.plot(compound[f'{mode}_Spectra'][0], compound[f'{mode}_Normalized']+bin_num, '-',\
-                              color=color, \
-                              label=(str(cid)+','+str(compound['Type'])))[0])
+            y = compound[f'{mode}_Normalized']
+            if scale:
+                y = 0.9 * y / np.max(y)
+            lines.append(plt.plot(compound[f'{mode}_Spectra'][0], y + bin_num, '-',
+                         color=color, linewidth=linewidth, \
+                         label=(str(cid)+','+str(compound['Type'])))[0])
+    
+    num_bins = len(np.unique(list(binmap.values())))
+    plt.plot([2140], num_bins, 'w.', markersize=0.1)
 
     if bool(kwargs):
-        title = title + f': {[v for k, v in kwargs.items()][0]}'
+        title = title + f': {[v for k, v in kwargs.items()][0][0]}'
     if mode == 'XES':
         title = 'VtC-' + title
     plt.title(title, fontsize=30)
@@ -336,7 +386,8 @@ def plot_spaghetti(plot, X_data, colorcodemap=None, binmap=None, mode='XANES', e
 
 
 def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', method='t-SNE', \
-                 hiddencids=None,  hiddenalpha=0.01, colormap=plt.cm.tab20, fontsize=16, **kwargs):
+                 hiddencids=None,  hiddenalpha=0.01, colormap=plt.cm.tab20, fontsize=16, size=5,
+                 verbose=False, **kwargs):
     fig, ax = plot
     
     if hiddencids is None:
@@ -355,14 +406,18 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', m
             hiddencids += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
         else:
             hiddencids += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
+
+    colorbynumber = lambda n,a=1: np.array(colormap((n - 1)%20/19))-[0,0,0,1-a]
     
     if colorcodemap is not None:
-        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] not in hiddencids else (0,0,0,hiddenalpha) \
-              for compound in X_data]
+        colors = [colorbynumber(colorcodemap[compound['CID']]) if compound['CID'] \
+                  not in hiddencids else (0,0,0,hiddenalpha) \
+                  for compound in X_data]
     else:
-        colors = ['k' if compound['CID'] not in hiddencids else (0,0,0,hiddenalpha) for compound in X_data if compound['CID']]
+        colors = ['k' if compound['CID'] not in hiddencids else (0,0,0,hiddenalpha)\
+                  for compound in X_data if compound['CID']]
     points = [redspacemap[compound['CID']] for compound in X_data]
-    dots = ax.scatter(*zip(*points), c=colors)
+    dots = ax.scatter(*zip(*points), s=size, c=colors)
         
     plt.xticks(fontsize=fontsize+3)
     plt.yticks(fontsize=fontsize+3)
@@ -379,8 +434,9 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES', m
     for item in legend.legendHandles:
         item.set_visible(False)
     
-    ax.axes.xaxis.set_visible(False)
-    ax.axes.yaxis.set_visible(False)
+    if not verbose:
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
         
     plt.show()
     return dots
@@ -423,16 +479,9 @@ def add_line_pubchem_link(pickable, X_data):
         sel.annotation.set_text("")
     mpl.cursor(pickable).connect("add", onselect)
     
-def get_correlation(cids, clusters1, clustermap1, clustermap2):
-    matchfrac_count = 0
-    for cluster in clusters1:
-        clustercids = [cid for cid in cids if clustermap1[cid]==cluster]
-        matchcount = 0
-        if len(clustercids)==1:
-            continue
-        for i,cid1 in enumerate(clustercids):
-            for cid2 in clustercids[i+1:]:
-                if clustermap2[cid1]==clustermap2[cid2]:
-                    matchcount+=1
-        matchfrac_count += matchcount/(2*len(clustercids)*(len(clustercids)-1))
-    return matchfrac_count/len(clusters1)
+def get_correlation(cids, cluster_label1, cluster_label2, clustermap1, clustermap2):    
+    cluster1cids = set([cid for cid in cids if clustermap1[cid]==cluster_label1])
+    cluster2cids = set([cid for cid in cids if clustermap2[cid]==cluster_label2])
+    fraction_same = len(cluster1cids.intersection(cluster2cids))
+    n_biggest = max(len(cluster1cids), len(cluster2cids))
+    return fraction_same/n_biggest
