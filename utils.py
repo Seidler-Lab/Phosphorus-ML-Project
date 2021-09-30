@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+import matplotlib.patches as mpatches
 import subprocess
 import os
 import shutil
@@ -44,9 +45,6 @@ COORDCODES = {
     'phosphite_ester': 3,
     'phosphonic_acid': 4,
     'phosphate': 4,
-    # 'dithiophosphate': 4,
-    # 'phosphorothioate': 4,
-    # 'methylphosphonothioate': 4,
 }
 
 PHOSPHORANECODES = {
@@ -80,6 +78,12 @@ def exclude_None_class(ele):
         return False
     else:
         return True
+
+
+def Merge(dict1, dict2):
+    """Merge two dictionaries."""
+    res = {**dict1, **dict2}
+    return res
 
 
 def read_esp_file(compound):
@@ -273,10 +277,10 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
     if verbose:
         max_h = 0
         for i, bar in enumerate(bars.patches):
-            ax.annotate(f'{i+1}\n({bar.get_height()})',
+            ax.annotate(f'({bar.get_height()})',
                         (bar.get_x() + bar.get_width() / 2, bar.get_height()),
                         ha='center', va='bottom',
-                        size=18, xytext=(0, 8),
+                        size=22, xytext=(0, 8),
                         textcoords='offset points')
             if max_h < bar.get_height():
                 max_h = bar.get_height()
@@ -284,7 +288,7 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
-    plt.xticks(x_pos, labels, fontsize=22)
+    plt.xticks(x_pos, labels, fontsize=24)
 
     if verbose:
         ax.set_ylabel('Counts', fontsize=24)
@@ -300,7 +304,7 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
             angle = 90
         else:
             angle = 0
-        size = 24
+        size = 20
     else:
         angle = 90
         size = 20
@@ -390,6 +394,12 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                 bin_averages[bin_num].append(y)
                 if bin_colors[bin_num] == 0:
                     bin_colors[bin_num] = color
+                lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
+                                      y + bin_num, '-',
+                                      color='gray', alpha=0.03,
+                                      linewidth=linewidth,
+                                      label=(str(cid) + ', ' +
+                                             str(compound['Class'])))[0])
             else:
                 lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
                                       y + bin_num, '-',
@@ -410,12 +420,12 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
     num_bins = max(np.unique(list(binmap.values())))
     plt.plot([2140], num_bins, 'w.', markersize=0.1)
 
-    if bool(kwargs):
-        title = title + f': {[v for k, v in kwargs.items()][0][0]}'
+    # if bool(kwargs):
+    #     title = title + f': {[v for k, v in kwargs.items()][0][0]}'
     if mode == 'XES':
         title = 'VtC-' + title
     if average_bins:
-        title = title + "\naveraged"
+        title = title + "\naveraged by bin"
     plt.title(title, fontsize=30)
 
     plt.xlabel('Energy (eV)', fontsize=26)
@@ -455,7 +465,8 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
                  method='t-SNE', hiddencids=None, hiddenalpha=0.01,
                  colormap=plt.cm.tab20, fontsize=16, heatmap=False,
                  size=5, verbose=False, colorbar=False, label=None,
-                 scalecolor=True, cbarlim=None, **kwargs):
+                 scalecolor=True, cbarlim=None, edgecolors=None, 
+                 show_legend=True, **kwargs):
     """Plot reduced dimension figure."""
     fig, ax = plot
 
@@ -463,14 +474,8 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
         hiddencids = []
     else:
         hiddencids = hiddencids.copy()
-    if 'CID' in kwargs:
-        if type(kwargs['CID']) == int:
-            hiddencids += [c['CID'] for c in X_data
-                           if c['CID'] != kwargs['CID']]
-        else:
-            hiddencids += [c['CID'] for c in X_data
-                           if c['CID'] not in kwargs['CID']]
-    elif 'Class' in kwargs:
+
+    if 'Class' in kwargs:
         hiddencids += [c['CID'] for c in X_data
                        if c['Class'] not in kwargs['Class']]
     elif 'Type' in kwargs:
@@ -486,19 +491,26 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
     else:
         colorbynumber = lambda n, a=1: np.array(colormap(n))-[0, 0, 0, 1-a]
 
+
     if colorcodemap is not None:
         colors = [colorbynumber(colorcodemap[compound['CID']])
                   if compound['CID'] not in hiddencids
                   else (0, 0, 0, hiddenalpha) for compound in X_data]
     else:
-        colors = ['k' if compound['CID'] not in hiddencids
-                  else (0, 0, 0, hiddenalpha)
-                  for compound in X_data if compound['CID']]
-    points = np.array([redspacemap[compound['CID']] for compound in X_data])
-    dots = plt.scatter(*zip(*points), s=size, c=colors)
+         colors = ['k' if compound['CID'] not in hiddencids
+                   else (0, 0, 0, hiddenalpha)
+                   for compound in X_data]
 
-    plt.xticks(fontsize=fontsize + 3)
-    plt.yticks(fontsize=fontsize + 3)
+    points = np.array([redspacemap[compound['CID']] for compound in X_data])
+    dots = ax.scatter(*zip(*points), s=size, c=colors, edgecolors=edgecolors)
+
+    if hiddenalpha == 0:
+        pts = np.array([redspacemap[compound['CID']] for compound in X_data
+                        if compound['CID'] not in hiddencids])
+        ymn, ymx = min(pts[:,1]), max(pts[:,1])
+        xmn, xmx = min(pts[:,0]), max(pts[:,0])
+        plt.ylim(ymn - (ymx-ymn)*0.05, ymx + (ymx-ymn)*0.05)
+        plt.xlim(xmn - (xmx-xmn)*0.05, xmx + (xmx-xmn)*0.05)
 
     ax.set_xlabel(f"{method} [0]", fontsize=fontsize + 6)
     ax.set_ylabel(f"{method} [1]", fontsize=fontsize + 6)
@@ -506,11 +518,30 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
 
     if mode == 'XES':
         mode = 'VtC-' + mode
-    legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
-                       fancybox=True, fontsize=fontsize)
 
-    for item in legend.legendHandles:
-        item.set_visible(False)
+    if 'CID' in kwargs:
+        for i, cid in enumerate(kwargs['CID']):
+            x, y = redspacemap[cid]
+            ax.scatter(x, y, s=size+30, facecolors='none', edgecolors='k', linewidth=2)
+            if label is not None:
+                text = label[i]
+            else:
+                text = i +  1 
+            ax.annotate(text, (x, y),
+                        ha='center', va='bottom',
+                        size=fontsize, xytext=(0, 4),
+                        textcoords='offset points')
+
+    if show_legend: 
+        if mode == 'VtC-XES':
+            loc = 2
+        else:
+            loc = 1                      
+        legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
+                           fancybox=True, fontsize=fontsize, loc=loc)
+
+        for item in legend.legendHandles:
+            item.set_visible(False)
 
     if not verbose:
         ax.axes.xaxis.set_visible(False)
@@ -518,11 +549,13 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
 
     if heatmap:
         x_train = np.array([redspacemap[compound['CID']] for compound in X_data
-                   if compound['CID'] not in hiddencids])
+                            if compound['CID'] not in hiddencids])
         y_train = [colorcodemap[compound['CID']] for compound in X_data
                    if compound['CID'] not in hiddencids]
         clf, xx, yy, Z = train_KNN(x_train, y_train, 5)
         ax.pcolormesh(xx, yy, Z, cmap=colormap, alpha=0.1)
+        plt.ylim(min(np.unique(yy)), max(np.unique(yy)))
+        plt.xlim(min(np.unique(xx)), max(np.unique(xx)))
 
     if colorbar:
         if cbarlim is not None:
@@ -602,3 +635,107 @@ def get_correlation(cids, cluster_label1, cluster_label2, clustermap1, clusterma
     fraction_same = len(cluster1cids.intersection(cluster2cids))
     n_biggest = max(len(cluster1cids), len(cluster2cids))
     return fraction_same / n_biggest
+
+
+def make_legend(plot, labels, pattern, codes=CLASSCODES, include_structures=True):
+    """Make legend."""
+    fig, ax = plot
+    
+    if include_structures:
+        structures = [plt.imread(f'../Figures/{clsname}.png') for clsname in labels]
+    else:
+        structures = labels
+
+    N = len(structures)
+    textx = 0.08
+    if N == 5:
+        w, h = 1/N, 0.8/N
+        x = lambda i: 1. - w*1.5 + 0.1*(i%2)
+        y = lambda i: .9 - h*(i + 1)
+        texty = 0.2
+    elif N == 4:
+        w, h = 1/N, 0.7/N
+        x = lambda i: 1. - w*.9 - 0.05*(i%3)
+        y = lambda i: .80 - h*(i + 1)*0.95
+        texty = 0.2
+    elif N == 3:
+        w, h = 1/N, 0.9/N
+        x = lambda i: 1.05 - w*1.35 + 0.08*(i%2)
+        y = lambda i: .90 - h*(i + 1)*0.9
+        texty = 0.0
+    else:
+        w, h = 1/N, 0.4
+        x = lambda i: 1. - w*1.1 - 0.1*(i%2)
+        y = lambda i: .90 - h*(i + 1)
+        textx, texty = 0.06, 0.1
+    fontsize = 25
+        
+    classnums = np.array([codes[clsname] for clsname in labels])
+    colors = list(colorbynumber(classnums, colormap=plt.cm.tab20))
+
+    if include_structures:
+        patches = [mpatches.Patch(color=colors[i], label=("\n" + label.replace('_',' ') + "\n")) 
+                   for i, label in enumerate(labels)]
+    else:
+        patches = [mpatches.Patch(color=colors[i], label=(label.replace('_',' '))) 
+                   for i, label in enumerate(labels)]
+    if include_structures:
+        loc = 'center'
+    else:
+        loc = 7
+    legend = ax.legend(handles=patches, loc=loc, fontsize=fontsize, framealpha=0, frameon=False)
+    if pattern is not None:
+        plt.arrow(x=0.05, y=0, dx=0, dy=0.9, width=0.02, facecolor='k', edgecolor='w') 
+        plt.annotate(pattern, (textx,texty), fontsize=fontsize, rotation=90)
+
+    if include_structures:
+        for i in range(N):
+            subax = fig.add_axes([x(i), y(i), w, h], anchor='NE')
+            subax.imshow(structures[i])
+            subax.axis('off')
+
+    ax.axis('off')
+    return fig
+
+
+def get_scaled_chargemap(X_subset, hiddencids=[], **kwargs):
+    """"Get scaled charge map."""
+    for compound in X_subset:
+        add = 0
+        for k in kwargs.keys():
+            if k == 'Charge':
+                min_c, max_c = kwargs[k]
+                if compound[k] <= max_c and compound[k] >= min_c:
+                    add += 1
+            if compound[k] in kwargs[k]:
+                add += 1
+        if add != len(kwargs.keys()):   
+            hiddencids += [compound['CID']]
+
+    shown_cidmap = {compound['CID']:compound['Charge'] for compound in X_subset if compound['CID'] not in hiddencids}
+
+    charge_values = list(shown_cidmap.values())
+    min_charge = np.min(charge_values)
+    max_charge = np.max(charge_values)
+
+    scaled_chargemap = {cid:(charge - min_charge) / (max_charge - min_charge)
+                        for cid,charge in shown_cidmap.items()}
+    return scaled_chargemap, min_charge, max_charge
+
+
+def make_charge_hist(chargemap_coord, label='Charge on P', bins=50, colorcodemap=None):
+    """Make histogram of charges."""
+    fig, ax = plt.subplots(figsize=(8,6))
+    if colorcodemap is None:
+        charges = [v for k,v in chargemap_coord.items() if v != -1]
+        histogram = plt.hist(charges, bins=bins, color=plt.cm.tab20(0.3), edgecolor='w')
+    else: 
+        unique_codes = np.unique(list(colorcodemap.values()))
+        colors = [colorbynumber(code) for code in unique_codes]
+        charges = [[v for k,v in chargemap_coord.items() if v != -1 and colorcodemap[k] == code]
+                   for code in unique_codes]
+        histogram = plt.hist(charges, bins=bins, color=colors, edgecolor='w', histtype='barstacked')
+    plt.xticks(fontsize=22)
+    plt.yticks(fontsize=22)
+    plt.xlabel(label, fontsize=26)
+    ax.tick_params(direction='out', width=3, length=9)
