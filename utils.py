@@ -1,18 +1,24 @@
 """Module contains commonly used functions for phosphorus data analysis."""
 
+from collections import defaultdict
+from pathlib import Path
+import os, shutil ,subprocess
+import webbrowser
+import urllib
+from PIL import Image
+
 import numpy as np
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 import matplotlib.patches as mpatches
-import subprocess
-import os
-import shutil
-from pathlib import Path
-from collections import defaultdict
 import mplcursors as mpl
-import webbrowser
+
 from sklearn.neighbors import KNeighborsRegressor
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import umap
 
 # GLOBAL VARIABLES
 CLASSCODES = {
@@ -24,10 +30,10 @@ CLASSCODES = {
     'phosphine_oxide': 6,
     'phosphinate': 7,
     'phosphonite': 8,
-    'phosphenic_acid': 9,
-    'phosphonate': 10,
-    'phosphite_ester': 11,
-    'hypophosphite': 12,
+    'phosphenic_acid': 8,
+    'phosphonate': 9,
+    'phosphite_ester': 10,
+    'hypophosphite': 13,
     'phosphonic_acid': 13,
     'phosphate': 14,
     'None': 0
@@ -156,45 +162,109 @@ def enumerate_unique(a):
     return [d[item] for item in a]
 
 
-def plot_spectrum_and_trans(spectrum, transitions, compound,
-                            verbose=True, label=None):
-    """Plot spectrum with transition lines."""
-    x, y = spectrum
-    xs, ys = transitions
+def process_img(img):
+    rgba = img.convert("RGBA")
+    channels = rgba.getdata()
+    size = rgba.size
 
-    # rescaling transitions
+    img_arr = np.array(rgba, np.uint8)
+    img_arr.reshape(size[0], size[1], 4)
+
+    new_channels = []
+    ymin, ymax = size[1], 0
+    xmin, xmax = size[0], 0
+    for i, row in enumerate(img_arr):
+        for j, color in enumerate(row):
+            if tuple(color) == (245, 245, 245, 255):
+                new_channels.append((255, 255, 255, 0))
+            else:
+                new_channels.append(tuple(color))
+                if j < xmin: xmin = j
+                if j > xmax: xmax = j   
+                if i < ymin: ymin = i
+                if i > ymax: ymax = i  
+    rgba.putdata(new_channels)
+
+    yrange = ymax - ymin
+    xrange = xmax - xmin
+    ybuffer = yrange*0.05
+    xbuffer = xrange*0.05
+    rgba = rgba.crop((xmin - xbuffer, ymin - ybuffer, xmax + xbuffer, ymax + ybuffer))
+    return rgba
+
+
+def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=None,
+                            energyrange=None, verbose=True, fontsize=20, 
+                            link_pubchem=False):
+    """Plot spectrum with transition lines."""
+    fig, ax = plot
+
+    cid = int(cid)
+    c = compoundmap[cid]
+    
+    x = c[f'{mode}_Spectra'][0]
+    y = c[f'{mode}_Normalized']
+    xs, ys = esnip(c[f'{mode}_Transitions'], mode=mode)
+
+    # rescaling transitions to match spectrum
     ys = ys / np.max(ys)
     ys = ys * np.max(y)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-
     ax.plot(x, y, 'k-')
 
-    markerline, stemlines, baseline = ax.stem(xs, ys, linefmt='r-',
-                                              markerfmt='ro',
+    markerline, stemlines, baseline = ax.stem(xs, ys, linefmt='-',
+                                              markerfmt='o',
                                               use_line_collection=True)
+    plt.setp(stemlines, 'color', plt.cm.tab20(color), 'linewidth', 1)
+    plt.setp(markerline, 'color', plt.cm.tab20(color), 'markersize', 4)
     plt.setp(baseline, visible=False)
-    plt.setp(stemlines, 'linewidth', 1)
-    plt.setp(markerline, 'markersize', 4)
 
-    plt.title(f'CID {compound}', fontsize=20)
-    plt.xlabel('Energy (eV)', fontsize=18)
-    plt.tick_params(labelsize=16)
+    ax.axvline(2152.6, color='k', linewidth=2.5, zorder=5)
+
+    if energyrange is not None:
+        ax.xaxis.set_minor_locator(MultipleLocator(1))
+        ax.xaxis.set_major_locator(MultipleLocator(5))
+        ax.set_xlim(energyrange)
+    else:
+        ax.xaxis.set_minor_locator(MultipleLocator(2))
+        ax.xaxis.set_major_locator(MultipleLocator(10))
 
     if verbose:
-        ax.xaxis.set_major_locator(MultipleLocator(10))
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%d'))
-        ax.xaxis.set_minor_locator(MultipleLocator(2))
-        ax.tick_params(direction='in', width=1, length=5, which='minor')
+        ax.tick_params(direction='out', width=3, length=12, which='major', labelsize=18)
+        ax.tick_params(direction='out', width=2, length=8, which='minor')
+        ax.set_yticks([])
+        ax.set_xlabel('Energy (eV)', fontsize=fontsize)
 
-    ax.tick_params(direction='in', width=2, length=8)
-    if label is not None:
-        legend = ax.legend([label], handlelength=0, handletextpad=0,
-                           fancybox=True, fontsize=22)
+        if mode == 'XES':
+            mode = 'VtC-' + mode
+    else:
+        ax.set_yticks([])
+        ax.set_xticks([])
+
+    if link_pubchem:
+        urllib.request.urlretrieve(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={cid}&t=l", f"{cid}.png")
+        img = Image.open(f'{cid}.png')
+        structure = process_img(img)
+        width, height = structure.size[0], structure.size[1]
+        bbox = ax.get_tightbbox(fig.canvas.get_renderer())
+        size = fig.get_size_inches()*fig.dpi
+        w = width/size[0]
+        h = height/size[1]
+        subax = fig.add_axes([bbox.x1/size[0] - w, bbox.y1/size[1] - h, w, h], anchor='SE')
+        subax.imshow(structure)
+        subax.axis('off')
+    else:
+        legend = ax.legend([cid], handlelength=0, handletextpad=0,
+                           fancybox=True, fontsize=fontsize+6)
         for item in legend.legendHandles:
             item.set_visible(False)
 
-    plt.show()
+    if label is not None:
+        ax.annotate(label, (0.05, 0.95),
+                    ha='left', va='top',
+                    size=fontsize+10, xytext=(0, 0),
+                    xycoords='axes fraction',
+                    textcoords='offset points')
 
 
 def plot_spectrum(spectrum, compound, verbose=True, label=None):
@@ -211,12 +281,11 @@ def plot_spectrum(spectrum, compound, verbose=True, label=None):
     plt.tick_params(labelsize=16)
 
     if verbose:
-        ax.xaxis.set_major_locator(MultipleLocator(10))
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%d'))
-        ax.xaxis.set_minor_locator(MultipleLocator(2))
-        ax.tick_params(direction='in', width=1, length=5, which='minor')
-
-    ax.tick_params(direction='in', width=2, length=8, which='major')
+        ax.xaxis.set_minor_locator(MultipleLocator(1))
+        ax.xaxis.set_major_locator(MultipleLocator(5))
+        ax.tick_params(direction='in', width=3, length=12, which='major')
+        ax.tick_params(direction='in', width=2, length=8, which='minor')
+        plt.yticks([])
 
     if label is not None:
         legend = ax.legend([label], handlelength=0, handletextpad=0,
@@ -226,36 +295,39 @@ def plot_spectrum(spectrum, compound, verbose=True, label=None):
     plt.show()
 
 
-def esnip(trans, spectra, energy=[], mode='xes', emin=0):
+def esnip(trans, mode='XES'):
     """Energy snip of transitions."""
-    x, y = trans
+    xs, ys = trans
 
-    if mode == 'xes':
-        for i, e in enumerate(x):
+    if mode == 'XES':
+        xs = xs - 19
+        emin = 2100
+        for i, e in enumerate(xs):
             if e >= emin:
                 break
-        x = x[i:]
-        y = y[i:]
-        if x[-1] < 0:
-            return x[:-1] - 19, y[:-1]
-        x = x - 19
-        y = y / np.max(spectra)
+        xs = xs[i:]
+        ys = ys[i:]
+        if xs[-1] < 0:
+            xs, ys = xs[:-1], ys[:-1]
 
-    elif mode == 'xanes':
-        x = x + 50
-        whiteline = energy[np.argmax(spectra)]
-        maxE = whiteline + 20
-        bool_arr = x < maxE
-        x = x[bool_arr]
-        y = y[bool_arr]
+    else:
+        xs = xs + 50
+        whiteline = xs[np.argmax(ys)]
+        maxE = whiteline + 15
+        bool_arr = xs < maxE
+        xs = xs[bool_arr]
+        ys = ys[bool_arr]
 
-    return x, y
+    return xs, ys
 
 
 def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
     """Make a histogram."""
     if verbose:
-        fig, ax = plt.subplots(figsize=(len(labels) * 1.3, 6))
+        if len(labels) in [2, 3]: 
+            fig, ax = plt.subplots(figsize=(4, 5))
+        else:
+            fig, ax = plt.subplots(figsize=(len(labels) * 1.3, 6))
     else:
         if len(labels) > 3:
             fig, ax = plt.subplots(figsize=(len(labels) - 1, 1))
@@ -285,6 +357,7 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
             if max_h < bar.get_height():
                 max_h = bar.get_height()
         plt.ylim(1, max_h * 1.2)
+        # ax.axes.get_yaxis().set_visible(False)
 
     plt.yticks(fontsize=22)
     ax.set_xticklabels(ax.get_xticks(), rotation=45)
@@ -313,7 +386,7 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
                    labelrotation=angle)
     plt.setp(ax.get_xticklabels(), Fontsize=size)
     plt.setp(ax.get_yticklabels(), Fontsize=20)
-
+    # plt.savefig('../hist', dpi=1000, transparent=True, bbox_inches='tight')
     plt.show()
 
 
@@ -365,7 +438,12 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                        if c['Class'] not in kwargs['Class']]
 
     if energyrange is not None:
+        ax.xaxis.set_minor_locator(MultipleLocator(1))
+        ax.xaxis.set_major_locator(MultipleLocator(5))
         plt.xlim(energyrange)
+    else:
+        ax.xaxis.set_minor_locator(MultipleLocator(2))
+        ax.xaxis.set_major_locator(MultipleLocator(10))
 
     lines = []
     if average_bins:
@@ -394,12 +472,12 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                 bin_averages[bin_num].append(y)
                 if bin_colors[bin_num] == 0:
                     bin_colors[bin_num] = color
-                lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
-                                      y + bin_num, '-',
-                                      color='gray', alpha=0.03,
-                                      linewidth=linewidth,
-                                      label=(str(cid) + ', ' +
-                                             str(compound['Class'])))[0])
+                # lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
+                #                       y + bin_num, '-',
+                #                       color='gray', alpha=0.03,
+                #                       linewidth=linewidth,
+                #                       label=(str(cid) + ', ' +
+                #                              str(compound['Class'])))[0])
             else:
                 lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
                                       y + bin_num, '-',
@@ -413,30 +491,30 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
             spectra = np.array(spectra)
             averaged_spectra = np.average(spectra, axis=0)
             lines.append(plt.plot(X_data[0][f'{mode}_Spectra'][0],
-                                  averaged_spectra + bin_num, '-',
+                                  averaged_spectra, '-',
                                   color=color, linewidth=linewidth,
                                   label=(str(bin_num))[0]))
 
     num_bins = max(np.unique(list(binmap.values())))
-    plt.plot([2140], num_bins, 'w.', markersize=0.1)
+
+    # plt.plot([2140], num_bins, 'w.', markersize=0.1)
 
     # if bool(kwargs):
     #     title = title + f': {[v for k, v in kwargs.items()][0][0]}'
     if mode == 'XES':
         title = 'VtC-' + title
     if average_bins:
-        title = title + "\naveraged by bin"
-    plt.title(title, fontsize=30)
+        title = title + "\naveraged by cluster"
+    if 'title' in kwargs:
+        plt.title(kwargs['title'], fontsize=30)
+    else:
+        plt.title(title, fontsize=30)
 
     plt.xlabel('Energy (eV)', fontsize=26)
-    ax.tick_params(direction='in', width=2, length=8)
     plt.xticks(fontsize=20)
 
-    ax.xaxis.set_minor_locator(MultipleLocator(2))
-    ax.xaxis.set_major_locator(MultipleLocator(10))
-
-    ax.tick_params(direction='in', width=2, length=10, which='major')
-    ax.tick_params(direction='in', width=1, length=8, which='minor')
+    ax.tick_params(direction='in', width=3, length=12, which='major')
+    ax.tick_params(direction='in', width=2, length=8, which='minor')
     plt.yticks([])
 
     plt.show()
@@ -532,11 +610,14 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
                         size=fontsize, xytext=(0, 4),
                         textcoords='offset points')
 
-    if show_legend: 
-        if mode == 'VtC-XES':
-            loc = 2
+    if show_legend:
+        if 'loc' in kwargs:
+            loc = kwargs['loc'] 
         else:
-            loc = 1                      
+            if mode == 'VtC-XES':
+                loc = 2
+            else:
+                loc = 1                      
         legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize, loc=loc)
 
@@ -712,7 +793,7 @@ def get_scaled_chargemap(X_subset, hiddencids=[], **kwargs):
         if add != len(kwargs.keys()):   
             hiddencids += [compound['CID']]
 
-    shown_cidmap = {compound['CID']:compound['Charge'] for compound in X_subset if compound['CID'] not in hiddencids}
+    shown_cidmap = {c['CID']:c['Charge'] for c in X_subset if c['CID'] not in hiddencids}
 
     charge_values = list(shown_cidmap.values())
     min_charge = np.min(charge_values)
@@ -739,3 +820,50 @@ def make_charge_hist(chargemap_coord, label='Charge on P', bins=50, colorcodemap
     plt.yticks(fontsize=22)
     plt.xlabel(label, fontsize=26)
     ax.tick_params(direction='out', width=3, length=9)
+
+
+def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
+                    method='tsne', ndim=2, **kwargs):
+    """Get dimension reduction plots on a subset of X_data."""
+    hiddenCIDS = [c['CID'] for c in X_data if not c['CID'] in codemap.keys()]
+
+    if 'CID' in kwargs:
+        if type(kwargs['CID']) == int:
+            hiddenCIDS += [c['CID'] for c in X_data if c['CID'] != kwargs['CID']]
+        else:
+            hiddenCIDS += [c['CID'] for c in X_data if c['CID'] not in kwargs['CID']]
+    elif 'Class' in kwargs:
+        hiddenCIDS += [c['CID'] for c in X_data if c['Class'] not in kwargs['Class']]
+    elif 'Type' in kwargs:
+        if type(kwargs['Type']) == int:
+            hiddenCIDS += [c['CID'] for c in X_data if c['Type'] != kwargs['Type']]
+        else:
+            hiddenCIDS += [c['CID'] for c in X_data if c['Type'] not in kwargs['Type']]
+
+    X_subset = [c for c in X_data if c['CID'] not in hiddenCIDS]
+    SPECTRA = np.array([c[f'{mode}_Normalized'] for c in X_subset])
+
+    # pca
+    pca_all = PCA()
+    PCA_all = pca_all.fit_transform(SPECTRA)
+    N = PCA_all.shape[1]
+    explained_var = np.array([np.sum(pca_all.explained_variance_ratio_[:i + 1])
+                             for i in range(N)])
+    threshold = np.where(explained_var >= 0.9)[0][0]
+
+    pca_sub = PCA(n_components=threshold + 1)
+    PCA_sub = pca_sub.fit_transform(SPECTRA)
+
+    if method == 'tsne':
+        # tsne
+        tsne_sub = TSNE(n_components=ndim, perplexity=perplexity, random_state=42)
+        reduced_space = tsne_sub.fit_transform(PCA_sub)
+    else:
+        # umap
+        umap_sub = umap.UMAP(random_state=42, n_components=ndim)
+        reduced_space = umap_sub.fit_transform(PCA_sub)
+
+    # Make CID->point maps
+    reduced_map = {c['CID']:pt for c, pt in zip(X_subset, reduced_space)}
+
+    return X_subset, reduced_map, reduced_space, hiddenCIDS
