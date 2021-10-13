@@ -6,38 +6,45 @@ import os, shutil ,subprocess
 import webbrowser
 import urllib
 from PIL import Image
+from itertools import compress
 
 import numpy as np
+import pandas as pd
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, Normalize
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+from matplotlib.ticker import MultipleLocator, FormatStrFormatter, AutoMinorLocator
 import matplotlib.patches as mpatches
-import mplcursors as mpl
+import mplcursors
+from matplotlib.colors import to_hex
+from matplotlib.colors import ListedColormap
+from matplotlib import gridspec
 
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.cluster import DBSCAN
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.cluster import hierarchy
+
 import umap
 
 # GLOBAL VARIABLES
 CLASSCODES = {
-    'phosphorane': 1,
-    'phosphane': 2,
+    'phosphorane': 2,
     'trialkyl_phosphine': 3,
-    'phosphaalkene': 4,
+    'phosphine_oxide': 4,
     'phosphinite': 5,
-    'phosphine_oxide': 6,
-    'phosphinate': 7,
-    'phosphonite': 8,
-    'phosphenic_acid': 8,
-    'phosphonate': 9,
-    'phosphite_ester': 10,
-    'hypophosphite': 13,
-    'phosphonic_acid': 13,
-    'phosphate': 14,
+    'phosphinate': 6,
+    'phosphonite': 9,
+    'phosphonate': 10,
+    'phosphite_ester': 7,
+    'phosphate': 8,
     'None': 0
 }
+
 
 COORDCODES = {
     'phosphorane': 4,
@@ -46,10 +53,8 @@ COORDCODES = {
     'phosphine_oxide': 4,
     'phosphinate': 4,
     'phosphonite': 3,
-    'phosphenic_acid': 4,
     'phosphonate': 4,
     'phosphite_ester': 3,
-    'phosphonic_acid': 4,
     'phosphate': 4,
 }
 
@@ -60,12 +65,23 @@ PHOSPHORANECODES = {
     'sulfur_phosphorane': 4,
 }
 
+OHCODES = {
+    'phosphenic_acid': 9,
+    'phosphonate': 10,
+    # 'half_phosphonic_acid': 0,
+    'phosphonic_acid': 1,
+    'phosphinate': 2
+}
+
 SULFURCODES = {
     'phosphate': 1,
     'phosphorothioate': 2,
     'dithiophosphate': 3
 }
 
+mpl.rcParams['font.family'] = ['sans-serif']
+mpl.rcParams['font.sans-serif'] = ['Arial']
+fontstyle = {'fontname':'Arial'}
 
 def colorbynumber(n, a=1, colormap=plt.cm.tab20):
     """Colormap using tab20."""
@@ -233,7 +249,7 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
         ax.tick_params(direction='out', width=3, length=12, which='major', labelsize=18)
         ax.tick_params(direction='out', width=2, length=8, which='minor')
         ax.set_yticks([])
-        ax.set_xlabel('Energy (eV)', fontsize=fontsize)
+        ax.set_xlabel('Energy (eV)', fontsize=fontsize, **fontstyle)
 
         if mode == 'XES':
             mode = 'VtC-' + mode
@@ -264,7 +280,8 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
                     ha='left', va='top',
                     size=fontsize+10, xytext=(0, 0),
                     xycoords='axes fraction',
-                    textcoords='offset points')
+                    textcoords='offset points',
+                    **fontstyle)
 
 
 def plot_spectrum(spectrum, compound, verbose=True, label=None):
@@ -353,23 +370,24 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
                         (bar.get_x() + bar.get_width() / 2, bar.get_height()),
                         ha='center', va='bottom',
                         size=22, xytext=(0, 8),
-                        textcoords='offset points')
+                        textcoords='offset points',
+                        **fontstyle)
             if max_h < bar.get_height():
                 max_h = bar.get_height()
         plt.ylim(1, max_h * 1.2)
         # ax.axes.get_yaxis().set_visible(False)
 
     plt.yticks(fontsize=22)
-    ax.set_xticklabels(ax.get_xticks(), rotation=45)
-    plt.xticks(x_pos, labels, fontsize=24)
+    ax.set_xticklabels(ax.get_xticks(), rotation=45, **fontstyle)
+    plt.xticks(x_pos, labels, fontsize=24, **fontstyle)
 
     if verbose:
-        ax.set_ylabel('Counts', fontsize=24)
+        ax.set_ylabel('Counts', fontsize=24, **fontstyle)
     else:
         ax.axes.yaxis.set_visible(False)
 
     if xlabel is not None:
-        ax.set_xlabel(xlabel, fontsize=24)
+        ax.set_xlabel(xlabel, fontsize=24, **fontstyle)
     ax.tick_params(axis='y', direction='in', width=3, length=9)
 
     if len(labels) < 10:
@@ -384,8 +402,8 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
 
     ax.tick_params(axis='x', direction='out', width=3, length=9,
                    labelrotation=angle)
-    plt.setp(ax.get_xticklabels(), Fontsize=size)
-    plt.setp(ax.get_yticklabels(), Fontsize=20)
+    plt.setp(ax.get_xticklabels(), Fontsize=size, **fontstyle)
+    plt.setp(ax.get_yticklabels(), Fontsize=20, **fontstyle)
     # plt.savefig('../hist', dpi=1000, transparent=True, bbox_inches='tight')
     plt.show()
 
@@ -614,10 +632,11 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
         if 'loc' in kwargs:
             loc = kwargs['loc'] 
         else:
-            if mode == 'VtC-XES':
-                loc = 2
-            else:
-                loc = 1                      
+            loc = 2
+            # if mode == 'VtC-XES':
+            #     loc = 2
+            # else:
+            #     loc = 1                      
         legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize, loc=loc)
 
@@ -669,7 +688,7 @@ def add_point_label(pickable, X_data, otherdatamap=None):
         if otherdatamap is not None:
             annotation += '\n'+str(otherdatamap[cid])
         sel.annotation.set_text(annotation)
-    mpl.cursor(pickable, highlight=True).connect("add", onselect)
+    mplcursors.cursor(pickable, highlight=True).connect("add", onselect)
 
 
 def add_line_label(pickable, X_data, otherdatamap=None):
@@ -687,7 +706,7 @@ def add_line_label(pickable, X_data, otherdatamap=None):
         if otherdatamap is not None:
             annotation += '\n' + str(otherdatamap[cid])
         sel.annotation.set_text(annotation)
-    mpl.cursor(pickable, highlight=True).connect("add", onselect)
+    mplcursors.cursor(pickable, highlight=True).connect("add", onselect)
 
 
 def add_point_pubchem_link(pickable, X_data):
@@ -696,7 +715,7 @@ def add_point_pubchem_link(pickable, X_data):
         webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?" + 
                         f"cid={X_data[sel.target.index]['CID']}&t=l")
         sel.annotation.set_text("")
-    mpl.cursor(pickable).connect("add", onselect)
+    mplcursors.cursor(pickable).connect("add", onselect)
 
 
 def add_line_pubchem_link(pickable, X_data):
@@ -706,7 +725,7 @@ def add_line_pubchem_link(pickable, X_data):
         compound = next(c for c in X_data if c['CID']==cid)
         webbrowser.open(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={compound['CID']}&t=l")
         sel.annotation.set_text("")
-    mpl.cursor(pickable).connect("add", onselect)
+    mplcursors.cursor(pickable).connect("add", onselect)
 
 
 def get_correlation(cids, cluster_label1, cluster_label2, clustermap1, clustermap2):
@@ -718,7 +737,7 @@ def get_correlation(cids, cluster_label1, cluster_label2, clustermap1, clusterma
     return fraction_same / n_biggest
 
 
-def make_legend(plot, labels, pattern, codes=CLASSCODES, include_structures=True):
+def make_legend(plot, labels, pattern, codes=CLASSCODES, include_structures=True, fontsize=25):
     """Make legend."""
     fig, ax = plot
     
@@ -749,7 +768,6 @@ def make_legend(plot, labels, pattern, codes=CLASSCODES, include_structures=True
         x = lambda i: 1. - w*1.1 - 0.1*(i%2)
         y = lambda i: .90 - h*(i + 1)
         textx, texty = 0.06, 0.1
-    fontsize = 25
         
     classnums = np.array([codes[clsname] for clsname in labels])
     colors = list(colorbynumber(classnums, colormap=plt.cm.tab20))
@@ -867,3 +885,56 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
     reduced_map = {c['CID']:pt for c, pt in zip(X_subset, reduced_space)}
 
     return X_subset, reduced_map, reduced_space, hiddenCIDS
+
+
+def make_stacked_scree(xes, xanes, n=None):
+    """Make a scree plot."""
+    if n is None:
+        n = len(xanes)
+    else:
+        xes = xes[:n]
+        xanes = xanes[:n]
+
+    fig, ax = plt.subplots(figsize=(8,6))
+
+    x = np.arange(n)+1
+    
+    cdf_xes = [np.sum(xes[:i+1]) for i in range(n)]
+    cdf_xanes = [np.sum(xanes[:i+1]) for i in range(n)]
+
+    ax.plot(x, cdf_xes, 's-', markersize=10, fillstyle='none', color=plt.cm.tab10(.15), label='VtC-XES')
+    ax.plot(x, cdf_xanes, 'o-', markersize=10, color=plt.cm.tab10(0.05), label='XANES')
+    ax.plot(x, np.ones(len(x))*0.9, 'k--', linewidth=3)
+
+    plt.xticks(x, fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.xlabel('Number of Parameters', fontsize=22, **fontstyle)
+    plt.ylabel(f'Cumultative\nExplained Variance', fontsize=22, **fontstyle)
+    ax.tick_params(direction='in', width=2, length=8)
+    
+    plt.legend(fontsize=26)
+
+    plt.savefig('../Figures/scree', dpi=800, transparent=True, bbox_inches='tight')
+    plt.show()
+
+
+def resize(pil_img, ratio=(1,1), background_color=(255, 255, 255)):
+    width, height = pil_img.size
+    if ratio == (1, 1):
+        if width == height:
+            return pil_img
+        elif width > height:
+            result = Image.new(pil_img.mode, (width, width), background_color)
+            result.paste(pil_img, (0, (width - height) // 2))
+            return result
+        else:
+            result = Image.new(pil_img.mode, (height, height), background_color)
+            result.paste(pil_img, ((height - width) // 2, 0))
+            return result
+    else:
+        xscale, yscale = ratio
+        background = Image.new(pil_img.mode, (int(width*xscale), int(height*yscale)), background_color)
+        bg_w, bg_h = background.size
+        offset = ((bg_w - width) // 2, (bg_h - height) // 2)
+        background.paste(pil_img, offset)
+        return background
