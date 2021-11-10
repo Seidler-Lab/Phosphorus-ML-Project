@@ -1,22 +1,23 @@
 """Module contains commonly used functions for phosphorus data analysis."""
 
-from collections import defaultdict
-from pathlib import Path
-import os, shutil ,subprocess
+import os, shutil, subprocess
 import webbrowser
 import urllib
+from collections import defaultdict
+from pathlib import Path
 from PIL import Image
 from itertools import compress
 
 import numpy as np
 import pandas as pd
+import scipy
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, Normalize
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter, AutoMinorLocator
 import matplotlib.patches as mpatches
 import mplcursors
+from matplotlib.colors import ListedColormap, Normalize
+from matplotlib.ticker import MultipleLocator, FormatStrFormatter, AutoMinorLocator
 from matplotlib.colors import to_hex
 from matplotlib.colors import ListedColormap
 from matplotlib import gridspec
@@ -45,7 +46,6 @@ CLASSCODES = {
     'None': 0
 }
 
-
 COORDCODES = {
     'phosphorane': 4,
     'trialkyl_phosphine': 3,
@@ -66,11 +66,11 @@ PHOSPHORANECODES = {
 }
 
 OHCODES = {
-    'phosphenic_acid': 9,
-    'phosphonate': 10,
-    # 'half_phosphonic_acid': 0,
-    'phosphonic_acid': 1,
-    'phosphinate': 2
+    'phosphenic_acid': 4,
+    'phosphinate': 3,
+    'half_phosphonic_acid': 9,
+    'phosphonic_acid': 2,
+    'phosphonate': 1    
 }
 
 SULFURCODES = {
@@ -202,16 +202,95 @@ def process_img(img):
     rgba.putdata(new_channels)
 
     yrange = ymax - ymin
-    xrange = xmax - xmin
+    xxrange = xmax - xmin
     ybuffer = yrange*0.05
-    xbuffer = xrange*0.05
+    xbuffer = xxrange*0.05
     rgba = rgba.crop((xmin - xbuffer, ymin - ybuffer, xmax + xbuffer, ymax + ybuffer))
     return rgba
 
 
+def resize_img(pil_img, ratio=(1,1), background_color=(255, 255, 255, 0)):
+    width, height = pil_img.size
+    if ratio == (1, 1):
+        if width == height:
+            return pil_img
+        elif width > height:
+            result = Image.new(pil_img.mode, (width, width), background_color)
+            result.paste(pil_img, (0, (width - height) // 2))
+            return result
+        else:
+            result = Image.new(pil_img.mode, (height, height), background_color)
+            result.paste(pil_img, ((height - width) // 2, 0))
+            return result
+    elif ratio[1] == 0:
+        size = ratio[0]
+        coeff = size*width
+        result = Image.new(pil_img.mode, (size, coeff*height), background_color)
+        bg_w, bg_h = result.size
+        offset = ((bg_w - width) // 2, (bg_h - height) // 2)
+        result.paste(pil_img, offset)
+        return result
+    elif ratio[0] == 0:
+        size = ratio[1]
+        coeff = size*height
+        result = Image.new(pil_img.mode, (coeff*width, size), background_color)
+        bg_w, bg_h = result.size
+        offset = ((bg_w - width) // 2, (bg_h - height) // 2)
+        result.paste(pil_img, offset)
+        return result
+    else:
+        xscale, yscale = ratio
+        background = Image.new(pil_img.mode, (int(width*xscale), int(height*yscale)), background_color)
+        bg_w, bg_h = background.size
+        offset = ((bg_w - width) // 2, (bg_h - height) // 2)
+        background.paste(pil_img, offset)
+        return background
+
+
+def add_structure(fig, cid, ax, resize=True, add_axes=False, chemdraw=False):
+    if chemdraw:
+        img = Image.open(f"../Figures/examples/{cid}.png")
+    else:
+        urllib.request.urlretrieve(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={cid}&t=l",
+                                   f"../Figures/pubchem_structures/{cid}.png")
+        img = Image.open(f"../Figures/pubchem_structures/{cid}.png")
+    structure = process_img(img)
+    width, height = structure.size[0], structure.size[1]
+    bbox = ax.get_tightbbox(fig.canvas.get_renderer())
+    size = fig.get_size_inches()*fig.dpi
+    w_ratio = width/size[0]
+    h_ratio = height/size[1]
+    if resize:
+        structure = resize_img(structure)
+    else:
+        if width > height:
+            desired_w_ratio = 0.1
+            desired_width = desired_w_ratio*size[0]
+            ratio = desired_width/width
+            structure = structure.resize((int(desired_width), int(height*ratio)),
+                                             Image.ANTIALIAS)
+            w_ratio = structure.size[0]/size[0]
+            h_ratio = structure.size[1]/size[1]
+        else:
+            desired_h_ratio = 0.1
+            desired_height = desired_h_ratio*size[1]
+            ratio = desired_height/height
+            structure = structure.resize((int(width*ratio), int(desired_height)),
+                                             Image.ANTIALIAS)
+            w_ratio = structure.size[0]/size[0]
+            h_ratio = structure.size[1]/size[1]
+    if add_axes:
+        subax = fig.add_axes([bbox.x1/size[0] - w_ratio, bbox.y1/size[1] - h_ratio,
+                              w_ratio, h_ratio], anchor='SE')
+    else:
+        subax = ax
+    subax.imshow(structure)
+    subax.axis('off')
+
+
 def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=None,
                             energyrange=None, verbose=True, fontsize=20, 
-                            link_pubchem=False):
+                            link_pubchem=False, chemdraw=True):
     """Plot spectrum with transition lines."""
     fig, ax = plot
 
@@ -235,7 +314,7 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
     plt.setp(markerline, 'color', plt.cm.tab20(color), 'markersize', 4)
     plt.setp(baseline, visible=False)
 
-    ax.axvline(2152.6, color='k', linewidth=2.5, zorder=5)
+    ax.axvline(2152.6, color='k', linewidth=2, zorder=5)
 
     if energyrange is not None:
         ax.xaxis.set_minor_locator(MultipleLocator(1))
@@ -258,17 +337,8 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
         ax.set_xticks([])
 
     if link_pubchem:
-        urllib.request.urlretrieve(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={cid}&t=l", f"{cid}.png")
-        img = Image.open(f'{cid}.png')
-        structure = process_img(img)
-        width, height = structure.size[0], structure.size[1]
-        bbox = ax.get_tightbbox(fig.canvas.get_renderer())
-        size = fig.get_size_inches()*fig.dpi
-        w = width/size[0]
-        h = height/size[1]
-        subax = fig.add_axes([bbox.x1/size[0] - w, bbox.y1/size[1] - h, w, h], anchor='SE')
-        subax.imshow(structure)
-        subax.axis('off')
+        add_structure(fig, cid, ax, resize=False, add_axes=True,
+                     chemdraw=chemdraw)
     else:
         legend = ax.legend([cid], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize+6)
@@ -404,7 +474,6 @@ def hist(bins, labels, verbose=False, xlabel=None, colormap=plt.cm.tab20):
                    labelrotation=angle)
     plt.setp(ax.get_xticklabels(), Fontsize=size, **fontstyle)
     plt.setp(ax.get_yticklabels(), Fontsize=20, **fontstyle)
-    # plt.savefig('../hist', dpi=1000, transparent=True, bbox_inches='tight')
     plt.show()
 
 
@@ -417,7 +486,8 @@ def checkmode(mode):
 def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                    mode='XANES', energyrange=None, hiddenalpha=0.01,
                    hiddencids=None, colormap=plt.cm.tab20, coloralpha=1,
-                   linewidth=1, scale=False, average_bins=False, **kwargs):
+                   linewidth=1, scale=False, average_bins=False, scalecolor=True,
+                   fontsize=22, large_ticks=True, verbose=True, **kwargs):
     """Make a spaghetti line plot."""
     checkmode(mode)
 
@@ -438,7 +508,7 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
         X_data = [c for c in list(compoundmap.values())]
 
     fig, ax = plot
-    title = f"{mode} Spectra"
+    title = mode
 
     if hiddencids is None:
         hiddencids = []
@@ -470,6 +540,11 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
         bin_colors = {bin_num: 0 for bin_num in
                       np.unique(list(binmap.values()))}
 
+    if scalecolor:
+        colorbynumber = lambda n, a=1: np.array(colormap((n - 1) % 20 / 19))-[0, 0, 0, 1-a]
+    else:
+        colorbynumber = lambda n, a=1: np.array(colormap(n))-[0, 0, 0, 1-a]
+
     for compound in X_data:
         cid = compound['CID']
         bin_num = binmap[cid]
@@ -490,12 +565,6 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                 bin_averages[bin_num].append(y)
                 if bin_colors[bin_num] == 0:
                     bin_colors[bin_num] = color
-                # lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
-                #                       y + bin_num, '-',
-                #                       color='gray', alpha=0.03,
-                #                       linewidth=linewidth,
-                #                       label=(str(cid) + ', ' +
-                #                              str(compound['Class'])))[0])
             else:
                 lines.append(plt.plot(compound[f'{mode}_Spectra'][0],
                                       y + bin_num, '-',
@@ -507,35 +576,58 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
         for bin_num, spectra in bin_averages.items():
             color = bin_colors[bin_num]
             spectra = np.array(spectra)
-            averaged_spectra = np.average(spectra, axis=0)
-            lines.append(plt.plot(X_data[0][f'{mode}_Spectra'][0],
-                                  averaged_spectra, '-',
+            # compute stats
+            avg_spectra, lower_CI, upper_CI = mean_confidence_interval(spectra)
+            # find min and max
+            min_spectra = np.min(spectra, axis=0)
+            max_spectra = np.max(spectra, axis=0)
+            # actually plot lines
+            energy = X_data[0][f'{mode}_Spectra'][0]
+            lines.append(plt.plot(energy,
+                                  avg_spectra, '-',
                                   color=color, linewidth=linewidth,
                                   label=(str(bin_num))[0]))
+            # ax.fill_between(energy, lower_CI, upper_CI,
+            #                 color=color, alpha=0.2)
+            ax.fill_between(energy, min_spectra, max_spectra,
+                            color=color, alpha=0.2)
+
 
     num_bins = max(np.unique(list(binmap.values())))
 
-    # plt.plot([2140], num_bins, 'w.', markersize=0.1)
-
-    # if bool(kwargs):
-    #     title = title + f': {[v for k, v in kwargs.items()][0][0]}'
     if mode == 'XES':
         title = 'VtC-' + title
-    if average_bins:
-        title = title + "\naveraged by cluster"
-    if 'title' in kwargs:
-        plt.title(kwargs['title'], fontsize=30)
+
+    if verbose:
+        if 'title' in kwargs:
+            title = kwargs['title']
+        plt.title(title, fontsize=fontsize+6)
     else:
-        plt.title(title, fontsize=30)
+        if mode == 'XES':
+            x = 0.1
+        else:
+            x = 0.6
+        ax.annotate(title, (x, 0.9),
+                    ha='left', va='top',
+                    size=fontsize+6, xytext=(0, 0),
+                    xycoords='axes fraction',
+                    textcoords='offset points')
 
-    plt.xlabel('Energy (eV)', fontsize=26)
-    plt.xticks(fontsize=20)
-
-    ax.tick_params(direction='in', width=3, length=12, which='major')
-    ax.tick_params(direction='in', width=2, length=8, which='minor')
     plt.yticks([])
 
-    plt.show()
+    if large_ticks:
+        ax.tick_params(direction='out', width=4, length=16, which='major')
+        ax.tick_params(direction='out', width=3, length=12, which='minor')
+    else:
+        ax.tick_params(direction='out', width=3, length=12, which='major')
+        ax.tick_params(direction='out', width=2, length=8, which='minor')
+    
+    if verbose:
+        plt.xlabel('Energy (eV)', fontsize=fontsize+4)
+        plt.xticks(fontsize=fontsize)
+    else:
+        ax.axis('off')
+
     return lines
 
 
@@ -562,7 +654,7 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
                  colormap=plt.cm.tab20, fontsize=16, heatmap=False,
                  size=5, verbose=False, colorbar=False, label=None,
                  scalecolor=True, cbarlim=None, edgecolors=None, 
-                 show_legend=True, **kwargs):
+                 show_legend=True, offsets=None, **kwargs):
     """Plot reduced dimension figure."""
     fig, ax = plot
 
@@ -623,22 +715,25 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
                 text = label[i]
             else:
                 text = i +  1 
+            if offsets is None:
+                offset = (0, 5)
+            else:
+                if len(offsets) == len(kwargs['CID']):
+                    offset = offsets[i]
+                else:
+                    offset = offsets
             ax.annotate(text, (x, y),
                         ha='center', va='bottom',
-                        size=fontsize, xytext=(0, 4),
+                        size=fontsize, xytext=offset,
                         textcoords='offset points')
 
     if show_legend:
         if 'loc' in kwargs:
-            loc = kwargs['loc'] 
+            loc = kwargs['loc']
         else:
-            loc = 2
-            # if mode == 'VtC-XES':
-            #     loc = 2
-            # else:
-            #     loc = 1                      
+            loc = 1
         legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
-                           fancybox=True, fontsize=fontsize, loc=loc)
+                           fancybox=True, fontsize=fontsize, loc=loc, framealpha=0.6)
 
         for item in legend.legendHandles:
             item.set_visible(False)
@@ -737,66 +832,6 @@ def get_correlation(cids, cluster_label1, cluster_label2, clustermap1, clusterma
     return fraction_same / n_biggest
 
 
-def make_legend(plot, labels, pattern, codes=CLASSCODES, include_structures=True, fontsize=25):
-    """Make legend."""
-    fig, ax = plot
-    
-    if include_structures:
-        structures = [plt.imread(f'../Figures/{clsname}.png') for clsname in labels]
-    else:
-        structures = labels
-
-    N = len(structures)
-    textx = 0.08
-    if N == 5:
-        w, h = 1/N, 0.8/N
-        x = lambda i: 1. - w*1.5 + 0.1*(i%2)
-        y = lambda i: .9 - h*(i + 1)
-        texty = 0.2
-    elif N == 4:
-        w, h = 1/N, 0.7/N
-        x = lambda i: 1. - w*.9 - 0.05*(i%3)
-        y = lambda i: .80 - h*(i + 1)*0.95
-        texty = 0.2
-    elif N == 3:
-        w, h = 1/N, 0.9/N
-        x = lambda i: 1.05 - w*1.35 + 0.08*(i%2)
-        y = lambda i: .90 - h*(i + 1)*0.9
-        texty = 0.0
-    else:
-        w, h = 1/N, 0.4
-        x = lambda i: 1. - w*1.1 - 0.1*(i%2)
-        y = lambda i: .90 - h*(i + 1)
-        textx, texty = 0.06, 0.1
-        
-    classnums = np.array([codes[clsname] for clsname in labels])
-    colors = list(colorbynumber(classnums, colormap=plt.cm.tab20))
-
-    if include_structures:
-        patches = [mpatches.Patch(color=colors[i], label=("\n" + label.replace('_',' ') + "\n")) 
-                   for i, label in enumerate(labels)]
-    else:
-        patches = [mpatches.Patch(color=colors[i], label=(label.replace('_',' '))) 
-                   for i, label in enumerate(labels)]
-    if include_structures:
-        loc = 'center'
-    else:
-        loc = 7
-    legend = ax.legend(handles=patches, loc=loc, fontsize=fontsize, framealpha=0, frameon=False)
-    if pattern is not None:
-        plt.arrow(x=0.05, y=0, dx=0, dy=0.9, width=0.02, facecolor='k', edgecolor='w') 
-        plt.annotate(pattern, (textx,texty), fontsize=fontsize, rotation=90)
-
-    if include_structures:
-        for i in range(N):
-            subax = fig.add_axes([x(i), y(i), w, h], anchor='NE')
-            subax.imshow(structures[i])
-            subax.axis('off')
-
-    ax.axis('off')
-    return fig
-
-
 def get_scaled_chargemap(X_subset, hiddencids=[], **kwargs):
     """"Get scaled charge map."""
     for compound in X_subset:
@@ -872,7 +907,7 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
     pca_sub = PCA(n_components=threshold + 1)
     PCA_sub = pca_sub.fit_transform(SPECTRA)
 
-    if method == 'tsne':
+    if method == 'tsne' or method == 't-SNE':
         # tsne
         tsne_sub = TSNE(n_components=ndim, perplexity=perplexity, random_state=42)
         reduced_space = tsne_sub.fit_transform(PCA_sub)
@@ -914,27 +949,16 @@ def make_stacked_scree(xes, xanes, n=None):
     
     plt.legend(fontsize=26)
 
-    plt.savefig('../Figures/scree', dpi=800, transparent=True, bbox_inches='tight')
+    plt.savefig('../Figures/SI_scree.png', dpi=800, transparent=True, bbox_inches='tight')
     plt.show()
 
 
-def resize(pil_img, ratio=(1,1), background_color=(255, 255, 255)):
-    width, height = pil_img.size
-    if ratio == (1, 1):
-        if width == height:
-            return pil_img
-        elif width > height:
-            result = Image.new(pil_img.mode, (width, width), background_color)
-            result.paste(pil_img, (0, (width - height) // 2))
-            return result
-        else:
-            result = Image.new(pil_img.mode, (height, height), background_color)
-            result.paste(pil_img, ((height - width) // 2, 0))
-            return result
-    else:
-        xscale, yscale = ratio
-        background = Image.new(pil_img.mode, (int(width*xscale), int(height*yscale)), background_color)
-        bg_w, bg_h = background.size
-        offset = ((bg_w - width) // 2, (bg_h - height) // 2)
-        background.paste(pil_img, offset)
-        return background
+def mean_confidence_interval(data, confidence=0.90):
+    n = len(data)
+    m, se = np.mean(data, axis=0), scipy.stats.sem(data, axis=0)
+    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+    return m, m-h*3, m+h*3
+
+
+def get_HM_energy(energy, spectrum):
+    return energy[spectrum > np.max(spectrum)/2][0]
