@@ -27,6 +27,11 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import StandardScaler
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.gaussian_process.kernels import RBF, Matern, RationalQuadratic
+
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.cluster import hierarchy
 
@@ -47,15 +52,15 @@ CLASSCODES = {
 }
 
 COORDCODES = {
-    'phosphorane': 4,
-    'trialkyl_phosphine': 3,
-    'phosphinite': 3,
-    'phosphine_oxide': 4,
-    'phosphinate': 4,
-    'phosphonite': 3,
-    'phosphonate': 4,
-    'phosphite_ester': 3,
-    'phosphate': 4,
+    'phosphorane': 3,
+    'trialkyl_phosphine': 1,
+    'phosphinite': 1,
+    'phosphine_oxide': 3,
+    'phosphinate': 3,
+    'phosphonite': 1,
+    'phosphonate': 3,
+    'phosphite_ester': 1,
+    'phosphate': 3,
 }
 
 PHOSPHORANECODES = {
@@ -247,21 +252,23 @@ def resize_img(pil_img, ratio=(1,1), background_color=(255, 255, 255, 0)):
         return background
 
 
-def add_structure(fig, cid, ax, resize=True, add_axes=False, chemdraw=False):
+def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False):
     if chemdraw:
         img = Image.open(f"../Figures/examples/{cid}.png")
+        structure = img
     else:
         urllib.request.urlretrieve(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={cid}&t=l",
                                    f"../Figures/pubchem_structures/{cid}.png")
         img = Image.open(f"../Figures/pubchem_structures/{cid}.png")
-    structure = process_img(img)
+        structure = process_img(img)
     width, height = structure.size[0], structure.size[1]
     bbox = ax.get_tightbbox(fig.canvas.get_renderer())
     size = fig.get_size_inches()*fig.dpi
     w_ratio = width/size[0]
     h_ratio = height/size[1]
     if resize:
-        structure = resize_img(structure)
+        pass
+        # structure = resize_img(structure)
     else:
         if width > height:
             desired_w_ratio = 0.1
@@ -272,7 +279,7 @@ def add_structure(fig, cid, ax, resize=True, add_axes=False, chemdraw=False):
             w_ratio = structure.size[0]/size[0]
             h_ratio = structure.size[1]/size[1]
         else:
-            desired_h_ratio = 0.1
+            desired_h_ratio = 0.12
             desired_height = desired_h_ratio*size[1]
             ratio = desired_height/height
             structure = structure.resize((int(width*ratio), int(desired_height)),
@@ -289,7 +296,7 @@ def add_structure(fig, cid, ax, resize=True, add_axes=False, chemdraw=False):
 
 
 def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=None,
-                            energyrange=None, verbose=True, fontsize=20, 
+                            energyrange=None, verbose=True, fontsize=20, resize=False,
                             link_pubchem=False, chemdraw=True):
     """Plot spectrum with transition lines."""
     fig, ax = plot
@@ -314,7 +321,7 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
     plt.setp(markerline, 'color', plt.cm.tab20(color), 'markersize', 4)
     plt.setp(baseline, visible=False)
 
-    ax.axvline(2152.6, color='k', linewidth=2, zorder=5)
+    ax.axvline(2152.66, color='k', linewidth=2, zorder=5)
 
     if energyrange is not None:
         ax.xaxis.set_minor_locator(MultipleLocator(1))
@@ -337,7 +344,7 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
         ax.set_xticks([])
 
     if link_pubchem:
-        add_structure(fig, cid, ax, resize=False, add_axes=True,
+        add_structure(fig, cid, ax, resize=resize, add_axes=True,
                      chemdraw=chemdraw)
     else:
         legend = ax.legend([cid], handlelength=0, handletextpad=0,
@@ -605,9 +612,11 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
     else:
         if mode == 'XES':
             x = 0.1
+            y = 0.9
         else:
             x = 0.6
-        ax.annotate(title, (x, 0.9),
+            y = 0.8
+        ax.annotate(title, (x, y),
                     ha='left', va='top',
                     size=fontsize+6, xytext=(0, 0),
                     xycoords='axes fraction',
@@ -857,7 +866,7 @@ def get_scaled_chargemap(X_subset, hiddencids=[], **kwargs):
     return scaled_chargemap, min_charge, max_charge
 
 
-def make_charge_hist(chargemap_coord, label='Charge on P', bins=50, colorcodemap=None):
+def make_charge_hist(chargemap_coord, atom='P', bins=50, colorcodemap=None):
     """Make histogram of charges."""
     fig, ax = plt.subplots(figsize=(8,6))
     if colorcodemap is None:
@@ -871,6 +880,7 @@ def make_charge_hist(chargemap_coord, label='Charge on P', bins=50, colorcodemap
         histogram = plt.hist(charges, bins=bins, color=colors, edgecolor='w', histtype='barstacked')
     plt.xticks(fontsize=22)
     plt.yticks(fontsize=22)
+    label = f'Charge on {atom}'
     plt.xlabel(label, fontsize=26)
     ax.tick_params(direction='out', width=3, length=9)
 
@@ -907,7 +917,10 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
     pca_sub = PCA(n_components=threshold + 1)
     PCA_sub = pca_sub.fit_transform(SPECTRA)
 
-    if method == 'tsne' or method == 't-SNE':
+    if method == 'PCA':
+        reduced_space = PCA_sub
+
+    elif method == 'tsne' or method == 't-SNE':
         # tsne
         tsne_sub = TSNE(n_components=ndim, perplexity=perplexity, random_state=42)
         reduced_space = tsne_sub.fit_transform(PCA_sub)
@@ -962,3 +975,178 @@ def mean_confidence_interval(data, confidence=0.90):
 
 def get_HM_energy(energy, spectrum):
     return energy[spectrum > np.max(spectrum)/2][0]
+
+
+def set_spine_width(ax, width=2):
+    for spine in ['top','bottom','left','right']:
+        ax.spines[spine].set_linewidth(width)
+
+
+def turn_off_spines(ax, spines=['top','bottom','left','right']):
+    for spine in spines:
+        ax.spines[spine].set_visible(False)
+
+
+def turn_off_ticks(ax):
+    ax.tick_params(which='both',
+                   bottom=False,
+                   left=False,
+                   labelbottom=False,
+                   labelleft=False)
+
+
+def get_test_map(filename):
+    with open(filename, 'r', newline='') as f:
+        lines = f.read().splitlines()
+
+    test_map = {}
+    for line in lines:
+        cid, coord = line.split(': ')
+        test_map[int(cid)] = int(coord)
+    
+    return test_map
+
+def get_ML_datasets(train_map, test_map, reduced_map):
+
+    ##### training and validation test split
+    xtrain_cids, xval_cids, ytrain, yval = train_test_split(list(train_map.keys()),
+                                                            np.array(list(train_map.values())),
+                                                            test_size=0.3, random_state=42)
+
+    ####### training set
+    # transform x data
+    xtrain = np.array([reduced_map[cid] for cid in xtrain_cids])
+    scaler = StandardScaler().fit(xtrain)
+    xtrain = scaler.transform(xtrain)
+
+    ####### validation set
+    # transform x data
+    xval = np.array([reduced_map[cid] for cid in xval_cids])
+    xval = scaler.transform(xval)
+
+    ####### test set
+    xtest_cids = list(test_map.keys())
+    ytest = np.array(list(test_map.values()))
+    # transform x data
+    xtest = np.array([reduced_map[cid] for cid in xtest_cids])
+    xtest = scaler.transform(xtest)
+    
+    return xtrain, xval, xtest, ytrain, yval, ytest
+
+
+def write_test_file(codemap, filename):
+    for select_code in np.unique(list(codemap.values())):
+        cid_list = [cid for cid, code in codemap.items() if code == select_code]
+        N = len(cid_list)
+
+        test_indices = np.random.randint(N, size=(int(0.15*N)))
+        test_cids = [cid_list[index] for index in test_indices]
+
+        f = open(filename, "a")
+        for cid in test_cids:
+            f.write(f'{cid}: {codemap[cid]}\n')
+        f.close()
+
+def get_train_map(codemap, test_map):
+    train_map = {cid: code for cid, code in codemap.items() if cid not in list(test_map.keys())}
+    return train_map
+
+
+def train_GP(XES_map, XANES_map, train_map, test_map, Accuracies, Confidence, validate=True,
+             **args):
+    likelihood = []
+    for mode in ['XES', 'XANES']:
+        if mode == 'XES':
+            reduced_map = XES_map
+            kernel = RationalQuadratic()*Matern()
+        else:
+            reduced_map = XANES_map
+            kernel = RationalQuadratic()
+
+        xtrain, xval, xtest, ytrain, yval, ytest = get_ML_datasets(train_map, test_map, reduced_map)
+
+        GP = GaussianProcessClassifier(random_state=42, kernel=kernel)
+
+        GP.fit(xtrain, ytrain)
+        if validate:
+            confidence = np.max(GP.predict_proba(xval), axis=1)
+            score = GP.score(xval, yval)
+        else:
+            confidence = np.max(GP.predict_proba(xtest), axis=1)
+            score = GP.score(xtest, ytest)
+
+        if mode == 'XES':
+            Accuracies[0].append(score*100)
+            Confidence[0].append(np.average(confidence)*100)
+        else:
+            Accuracies[1].append(score*100)
+            Confidence[1].append(np.average(confidence)*100)
+
+
+def bar_chart(Acc, Confidence, Schemes, figsize=(16.5,8.5), validate=False, save=False):
+
+    x = Schemes
+    labels = ['VtC-XES', 'Confidence', 'XANES', 'Confidence']
+
+    x_pos = np.array([i for i, _ in enumerate(x)])
+
+    Colors = [plt.cm.tab20(0), plt.cm.tab20(1), plt.cm.tab20(2), plt.cm.tab20(3)]
+
+    fig = plt.figure(figsize=figsize)
+    ax1 = fig.add_subplot(20,1,(1,19))
+    ax2 = fig.add_subplot(20,1,20)
+
+    plt.subplots_adjust(hspace=0.3)
+    width = 0.2
+    for i in range(2):
+        # Accuracies
+        ax1.bar(x_pos + width*i*1.7, Acc[i], width=width, color=Colors[2*i], label=labels[2*i])
+        ax2.bar(x_pos + width*i*1.7, Acc[i], width=width, color=Colors[2*i], label=labels[2*i])
+        # Confidence
+        ax1.bar(x_pos + width*i*1.7 + width*.5, Confidence[i], width=width,
+                color=Colors[2*i + 1], label=labels[2*i + 1])
+        ax2.bar(x_pos + width*i*1.7 + width*.5, Confidence[i], width=width,
+                color=Colors[2*i + 1], label=labels[2*i + 1])
+
+    plt.yticks(fontsize=22)
+    # plt.xticks(x_pos, x, fontsize=24)
+    plt.xticks(x_pos + width*1.1, x, fontsize=24)
+
+    ax1.set_ylabel(f'Accuracy (%)', fontsize=24)
+    ax1.tick_params(axis='y', direction='in', width=3, length=9)
+    ax2.tick_params(axis='y', direction='in', width=3, length=9)
+
+    ax2.tick_params(axis='x',direction='out', width=3, length=9)
+
+    plt.setp(ax1.get_xticklabels(), Fontsize=22)
+    plt.setp(ax1.get_yticklabels(), Fontsize=22)
+
+    plt.setp(ax2.get_xticklabels(), Fontsize=22)
+    plt.setp(ax2.get_xticklabels(), Fontsize=22)
+
+    ax2.set_yticks([0])
+
+    ax1.set_ylim(45, 100.5)
+    ax2.set_ylim(0, 1) 
+
+    ax1.axes.xaxis.set_visible(False)
+    ax1.spines['bottom'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+
+    if not validate:
+        ax1.legend(ncol=4,fontsize=24,loc=2,bbox_to_anchor=(0., 1.15))
+
+    d = .01  # how big to make the diagonal lines in axes coordinates
+
+    kwargs = dict(transform=ax1.transAxes, color='k', clip_on=False, linewidth=2)
+    ax1.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
+    ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
+
+    resize = 22.5
+    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+    ax2.plot((-d, +d), (1 - resize*d, 1 + resize*d), **kwargs)  # bottom-left diagonal
+    ax2.plot((1 - d, 1 + d), (1 - resize*d, 1 + resize*d), **kwargs)  # bottom-right diagonal
+
+    if save:
+        plt.savefig(f'../Figures/Accuracies.png', dpi=1000,
+                    transparent=False, bbox_inches='tight')
