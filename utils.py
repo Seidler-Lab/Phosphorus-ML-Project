@@ -84,6 +84,19 @@ SULFURCODES = {
     'dithiophosphate': 3
 }
 
+PERIODIC_TABLE = \
+    ['H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne',
+     'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V',
+     'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br',
+     'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag',
+     'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr',
+     'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu',
+     'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi',
+     'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am',
+     'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh',
+     'Hs', 'Mt', 'Ds ', 'Rg ', 'Cn ', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og']
+PERIODIC_MAP = {ele: i + 1 for i, ele in enumerate(PERIODIC_TABLE)}
+
 mpl.rcParams['font.family'] = ['sans-serif']
 mpl.rcParams['font.sans-serif'] = ['Arial']
 fontstyle = {'fontname':'Arial'}
@@ -254,7 +267,7 @@ def resize_img(pil_img, ratio=(1,1), background_color=(255, 255, 255, 0)):
 
 def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False):
     if chemdraw:
-        img = Image.open(f"../Figures/examples/{cid}.png")
+        img = Image.open(f"../Figures/chemdraw/{cid}.png")
         structure = img
     else:
         urllib.request.urlretrieve(f"https://pubchem.ncbi.nlm.nih.gov/image/imgsrv.fcgi?cid={cid}&t=l",
@@ -279,7 +292,10 @@ def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False):
             w_ratio = structure.size[0]/size[0]
             h_ratio = structure.size[1]/size[1]
         else:
-            desired_h_ratio = 0.12
+            if height/width > 1.3:
+                desired_h_ratio = 0.19
+            else:
+                desired_h_ratio = 0.12
             desired_height = desired_h_ratio*size[1]
             ratio = desired_height/height
             structure = structure.resize((int(width*ratio), int(desired_height)),
@@ -353,12 +369,9 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
             item.set_visible(False)
 
     if label is not None:
-        ax.annotate(label, (0.05, 0.95),
-                    ha='left', va='top',
-                    size=fontsize+10, xytext=(0, 0),
-                    xycoords='axes fraction',
-                    textcoords='offset points',
-                    **fontstyle)
+        t = ax.text(energyrange[0] + 0.85, np.max(ys)*0.9, label,
+            ha='left', va='top', size=fontsize+10,
+            bbox=dict(boxstyle="round,pad=0.3", ec=plt.cm.tab20(color), fc="w", lw=5))
 
 
 def plot_spectrum(spectrum, compound, verbose=True, label=None):
@@ -594,10 +607,8 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
                                   avg_spectra, '-',
                                   color=color, linewidth=linewidth,
                                   label=(str(bin_num))[0]))
-            # ax.fill_between(energy, lower_CI, upper_CI,
+            # ax.fill_between(energy, min_spectra, max_spectra,
             #                 color=color, alpha=0.2)
-            ax.fill_between(energy, min_spectra, max_spectra,
-                            color=color, alpha=0.2)
 
 
     num_bins = max(np.unique(list(binmap.values())))
@@ -743,9 +754,10 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
             loc = 1
         legend = ax.legend([f'{mode}:\n{method}'], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize, loc=loc, framealpha=0.6)
-
         for item in legend.legendHandles:
             item.set_visible(False)
+        legend.get_frame().set_linewidth(4.)
+        legend.get_frame().set_edgecolor("k")
 
     if not verbose:
         ax.axes.xaxis.set_visible(False)
@@ -783,7 +795,7 @@ def plot_dim_red(plot, X_data, redspacemap, colorcodemap=None, mode='VtC-XES',
 
 
 def add_point_label(pickable, X_data, otherdatamap=None):
-    """"""
+    """Add point label."""
     def onselect(sel):
         compound = X_data[sel.target.index]
         cid = compound['CID']
@@ -791,6 +803,13 @@ def add_point_label(pickable, X_data, otherdatamap=None):
                      + str(compound['Class'])
         if otherdatamap is not None:
             annotation += '\n'+str(otherdatamap[cid])
+        sel.annotation.set_text(annotation)
+    mplcursors.cursor(pickable, highlight=True).connect("add", onselect)
+
+def add_charge_label(pickable, data):
+    def onselect(sel):
+        i = sel.target.index
+        annotation = str(data[i]['atom']) + ': ' + str(data[i]['charge'])
         sel.annotation.set_text(annotation)
     mplcursors.cursor(pickable, highlight=True).connect("add", onselect)
 
@@ -866,9 +885,10 @@ def get_scaled_chargemap(X_subset, hiddencids=[], **kwargs):
     return scaled_chargemap, min_charge, max_charge
 
 
-def make_charge_hist(chargemap_coord, atom='P', bins=50, colorcodemap=None):
+def make_charge_hist(plot, chargemap_coord, atom='P', bins=50,
+                     colorcodemap=None, fontsize=22):
     """Make histogram of charges."""
-    fig, ax = plt.subplots(figsize=(8,6))
+    fig, ax = plot
     if colorcodemap is None:
         charges = [v for k,v in chargemap_coord.items() if v != -1]
         histogram = plt.hist(charges, bins=bins, color=plt.cm.tab20(0.3), edgecolor='w')
@@ -878,10 +898,11 @@ def make_charge_hist(chargemap_coord, atom='P', bins=50, colorcodemap=None):
         charges = [[v for k,v in chargemap_coord.items() if v != -1 and colorcodemap[k] == code]
                    for code in unique_codes]
         histogram = plt.hist(charges, bins=bins, color=colors, edgecolor='w', histtype='barstacked')
-    plt.xticks(fontsize=22)
-    plt.yticks(fontsize=22)
+    plt.xticks(fontsize=fontsize)
+    highest_count = np.max(histogram[0])
+    plt.yticks(np.arange(highest_count + 1), fontsize=fontsize)
     label = f'Charge on {atom}'
-    plt.xlabel(label, fontsize=26)
+    plt.xlabel(label, fontsize=fontsize+4)
     ax.tick_params(direction='out', width=3, length=9)
 
 
