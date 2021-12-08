@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 from PIL import Image
 from itertools import compress
+import re
 
 import numpy as np
 import pandas as pd
@@ -48,7 +49,6 @@ CLASSCODES = {
     'phosphonate': 10,
     'phosphite_ester': 7,
     'phosphate': 8,
-    'None': 0
 }
 
 COORDCODES = {
@@ -61,13 +61,6 @@ COORDCODES = {
     'phosphonate': 3,
     'phosphite_ester': 1,
     'phosphate': 3,
-}
-
-PHOSPHORANECODES = {
-    'phosphorane': 1,
-    'nitrogen_phosphorane': 2,
-    'phosphine_oxide': 3,
-    'sulfur_phosphorane': 4,
 }
 
 OHCODES = {
@@ -96,6 +89,10 @@ PERIODIC_TABLE = \
      'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh',
      'Hs', 'Mt', 'Ds ', 'Rg ', 'Cn ', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og']
 PERIODIC_MAP = {ele: i + 1 for i, ele in enumerate(PERIODIC_TABLE)}
+
+atom_colorcode = {'P': 'magenta', 'O': 'red', 'C': 'black',
+                  'H': 'gray', 'N': 'blue', 'Cl': 'green',
+                  'S': 'yellow', 'Br': 'purple'}
 
 mpl.rcParams['font.family'] = ['sans-serif']
 mpl.rcParams['font.sans-serif'] = ['Arial']
@@ -597,7 +594,7 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
             color = bin_colors[bin_num]
             spectra = np.array(spectra)
             # compute stats
-            avg_spectra, lower_CI, upper_CI = mean_confidence_interval(spectra)
+            avg_spectra = np.mean(spectra, axis=0)
             # find min and max
             min_spectra = np.min(spectra, axis=0)
             max_spectra = np.max(spectra, axis=0)
@@ -907,9 +904,10 @@ def make_charge_hist(plot, chargemap_coord, atom='P', bins=50,
 
 
 def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
-                    method='tsne', ndim=2, **kwargs):
+                    method='tsne', ndim=2, return_reducer=False,
+                    **kwargs):
     """Get dimension reduction plots on a subset of X_data."""
-    hiddenCIDS = [c['CID'] for c in X_data if not c['CID'] in codemap.keys()]
+    hiddenCIDS = [c['CID'] for c in X_data if not c['CID'] in list(codemap.keys())]
 
     if 'CID' in kwargs:
         if type(kwargs['CID']) == int:
@@ -935,25 +933,29 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
                              for i in range(N)])
     threshold = np.where(explained_var >= 0.9)[0][0]
 
-    pca_sub = PCA(n_components=threshold + 1)
-    PCA_sub = pca_sub.fit_transform(SPECTRA)
+    pca_reducer = PCA(n_components=threshold + 1)
+    PCA_sub = pca_reducer.fit_transform(SPECTRA)
 
     if method == 'PCA':
+        reducer = pca_reducer
         reduced_space = PCA_sub
 
     elif method == 'tsne' or method == 't-SNE':
         # tsne
-        tsne_sub = TSNE(n_components=ndim, perplexity=perplexity, random_state=42)
-        reduced_space = tsne_sub.fit_transform(PCA_sub)
+        reducer = TSNE(n_components=ndim, perplexity=perplexity, random_state=42)
+        reduced_space = reducer.fit_transform(PCA_sub)
     else:
         # umap
-        umap_sub = umap.UMAP(random_state=42, n_components=ndim)
-        reduced_space = umap_sub.fit_transform(PCA_sub)
+        reducer = umap.UMAP(random_state=42, n_components=ndim)
+        reduced_space = reducer.fit_transform(PCA_sub)
 
     # Make CID->point maps
-    reduced_map = {c['CID']:pt for c, pt in zip(X_subset, reduced_space)}
+    reduced_map = {c['CID']: pt for c, pt in zip(X_subset, reduced_space)}
 
-    return X_subset, reduced_map, reduced_space, hiddenCIDS
+    if return_reducer:
+        return pca_reducer, reducer
+    else:
+        return X_subset, reduced_map, reduced_space, hiddenCIDS
 
 
 def make_stacked_scree(xes, xanes, n=None):
@@ -966,32 +968,28 @@ def make_stacked_scree(xes, xanes, n=None):
 
     fig, ax = plt.subplots(figsize=(8,6))
 
-    x = np.arange(n)+1
-    
-    cdf_xes = [np.sum(xes[:i+1]) for i in range(n)]
-    cdf_xanes = [np.sum(xanes[:i+1]) for i in range(n)]
+    x = np.arange(n) + 1
 
-    ax.plot(x, cdf_xes, 's-', markersize=10, fillstyle='none', color=plt.cm.tab10(.15), label='VtC-XES')
-    ax.plot(x, cdf_xanes, 'o-', markersize=10, color=plt.cm.tab10(0.05), label='XANES')
-    ax.plot(x, np.ones(len(x))*0.9, 'k--', linewidth=3)
+    cdf_xes = [np.sum(xes[:i + 1]) for i in range(n)]
+    cdf_xanes = [np.sum(xanes[:i + 1]) for i in range(n)]
+
+    ax.plot(x, cdf_xes, 's-', markersize=10, fillstyle='none',
+            color=plt.cm.tab10(.15), label='VtC-XES')
+    ax.plot(x, cdf_xanes, 'o-', markersize=10, color=plt.cm.tab10(0.05),
+            label='XANES')
+    ax.plot(x, np.ones(len(x)) * 0.9, 'k--', linewidth=3)
 
     plt.xticks(x, fontsize=18)
     plt.yticks(fontsize=18)
     plt.xlabel('Number of Parameters', fontsize=22, **fontstyle)
     plt.ylabel(f'Cumultative\nExplained Variance', fontsize=22, **fontstyle)
     ax.tick_params(direction='in', width=2, length=8)
-    
+
     plt.legend(fontsize=26)
 
-    plt.savefig('../Figures/SI_scree.png', dpi=800, transparent=True, bbox_inches='tight')
+    plt.savefig('../Figures/SI_scree.png', dpi=800, transparent=True,
+                bbox_inches='tight')
     plt.show()
-
-
-def mean_confidence_interval(data, confidence=0.90):
-    n = len(data)
-    m, se = np.mean(data, axis=0), scipy.stats.sem(data, axis=0)
-    h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
-    return m, m-h*3, m+h*3
 
 
 def get_HM_energy(energy, spectrum):
@@ -1019,72 +1017,88 @@ def turn_off_ticks(ax):
 def get_test_map(filename):
     with open(filename, 'r', newline='') as f:
         lines = f.read().splitlines()
-
     test_map = {}
     for line in lines:
         cid, coord = line.split(': ')
         test_map[int(cid)] = int(coord)
-    
     return test_map
 
-def get_ML_datasets(train_map, test_map, reduced_map):
+def pre_process_train_test_spectra(X_train=None, X_test=None,
+                                   pca_reducer=None, mode=None,
+                                   trained_reducer=None):
+    """args: X_train, X_test, pca_reducer, mode, trained_reducer."""
+    reduced_maps = []
+    for X in [X_train, X_test]:
+        spectra = np.array([c[f'{mode}_Normalized'] for c in X])
+        PCA = pca_reducer.transform(spectra)
+        reduced_space = trained_reducer.transform(PCA)
+        reduced_map = {c['CID']: pt for c, pt in zip(X, reduced_space)}
+        reduced_maps.append(reduced_map)
+    return reduced_maps
 
-    ##### training and validation test split
+
+def get_ML_datasets(train_map, test_map, **args):
+    """Split training, testing, and validation data."""
     xtrain_cids, xval_cids, ytrain, yval = train_test_split(list(train_map.keys()),
                                                             np.array(list(train_map.values())),
                                                             test_size=0.3, random_state=42)
 
-    ####### training set
-    # transform x data
-    xtrain = np.array([reduced_map[cid] for cid in xtrain_cids])
+    train_reduced_map, test_reduced_map = pre_process_train_test_spectra(**args)
+
+    xtrain = np.array([train_reduced_map[cid] for cid in xtrain_cids])
     scaler = StandardScaler().fit(xtrain)
     xtrain = scaler.transform(xtrain)
 
-    ####### validation set
-    # transform x data
-    xval = np.array([reduced_map[cid] for cid in xval_cids])
+    xval = np.array([train_reduced_map[cid] for cid in xval_cids])
     xval = scaler.transform(xval)
 
-    ####### test set
     xtest_cids = list(test_map.keys())
     ytest = np.array(list(test_map.values()))
-    # transform x data
-    xtest = np.array([reduced_map[cid] for cid in xtest_cids])
+    xtest = np.array([test_reduced_map[cid] for cid in xtest_cids])
     xtest = scaler.transform(xtest)
-    
+
     return xtrain, xval, xtest, ytrain, yval, ytest
 
 
 def write_test_file(codemap, filename):
-    for select_code in np.unique(list(codemap.values())):
-        cid_list = [cid for cid, code in codemap.items() if code == select_code]
+    for this_code in np.unique(list(codemap.values())):
+        cid_list = [cid for cid, code in codemap.items() if code == this_code]
         N = len(cid_list)
-
-        test_indices = np.random.randint(N, size=(int(0.15*N)))
+        test_indices = np.random.randint(N, size=(int(0.15 * N)))
         test_cids = [cid_list[index] for index in test_indices]
-
         f = open(filename, "a")
         for cid in test_cids:
             f.write(f'{cid}: {codemap[cid]}\n')
         f.close()
 
 def get_train_map(codemap, test_map):
-    train_map = {cid: code for cid, code in codemap.items() if cid not in list(test_map.keys())}
+    train_map = {cid: code for cid, code in codemap.items()
+                 if cid not in list(test_map.keys())}
     return train_map
 
 
-def train_GP(XES_map, XANES_map, train_map, test_map, Accuracies, Confidence, validate=True,
-             **args):
-    likelihood = []
+def train_GP(X_data, train_map, test_map, Accuracies=[[],[]], Confidence=[[],[]],
+             validate=True, **kwargs):
     for mode in ['XES', 'XANES']:
         if mode == 'XES':
-            reduced_map = XES_map
-            kernel = RationalQuadratic()*Matern()
+            kernel = RationalQuadratic() + Matern()
         else:
-            reduced_map = XANES_map
-            kernel = RationalQuadratic()
+            kernel = RationalQuadratic() + Matern()
 
-        xtrain, xval, xtest, ytrain, yval, ytest = get_ML_datasets(train_map, test_map, reduced_map)
+        X_train = [c for c in X_data if c['CID'] in list(train_map.keys())]
+        X_test = [c for c in X_data if c['CID'] in list(test_map.keys())]
+        args = {'Class': kwargs['Class']}
+        pca_reducer, trained_reducer = get_subset_maps(X_train, kwargs['codemap'],
+                                                       mode=mode, method=kwargs['method'],
+                                                       return_reducer=True,
+                                                       ndim=kwargs['ndim'],
+                                                       **args)
+        training_args = {'X_train': X_train, 'X_test': X_test,
+                         'pca_reducer': pca_reducer, 'mode': mode,
+                         'trained_reducer': trained_reducer}
+        xtrain, xval, xtest, ytrain, yval, ytest = get_ML_datasets(train_map,
+                                                                   test_map,
+                                                                   **training_args)
 
         GP = GaussianProcessClassifier(random_state=42, kernel=kernel)
 
@@ -1097,14 +1111,15 @@ def train_GP(XES_map, XANES_map, train_map, test_map, Accuracies, Confidence, va
             score = GP.score(xtest, ytest)
 
         if mode == 'XES':
-            Accuracies[0].append(score*100)
-            Confidence[0].append(np.average(confidence)*100)
+            Accuracies[0].append(score * 100)
+            Confidence[0].append(np.average(confidence) * 100)
         else:
-            Accuracies[1].append(score*100)
-            Confidence[1].append(np.average(confidence)*100)
+            Accuracies[1].append(score * 100)
+            Confidence[1].append(np.average(confidence) * 100)
 
 
-def bar_chart(Acc, Confidence, Schemes, figsize=(16.5,8.5), validate=False, save=False):
+def bar_chart(Acc, Confidence, Schemes, figsize=(16.5, 8.5),
+              validate=False, save=False):
 
     x = Schemes
     labels = ['VtC-XES', 'Confidence', 'XANES', 'Confidence']
@@ -1117,12 +1132,17 @@ def bar_chart(Acc, Confidence, Schemes, figsize=(16.5,8.5), validate=False, save
     ax1 = fig.add_subplot(20,1,(1,19))
     ax2 = fig.add_subplot(20,1,20)
 
+    ax1.set_axisbelow(True)
+    ax1.yaxis.grid(color='gray', linestyle='dashed', zorder=0)
+
     plt.subplots_adjust(hspace=0.3)
     width = 0.2
     for i in range(2):
         # Accuracies
-        ax1.bar(x_pos + width*i*1.7, Acc[i], width=width, color=Colors[2*i], label=labels[2*i])
-        ax2.bar(x_pos + width*i*1.7, Acc[i], width=width, color=Colors[2*i], label=labels[2*i])
+        ax1.bar(x_pos + width*i*1.7, Acc[i], width=width,
+                color=Colors[2*i], label=labels[2*i])
+        ax2.bar(x_pos + width*i*1.7, Acc[i], width=width,
+                color=Colors[2*i], label=labels[2*i])
         # Confidence
         ax1.bar(x_pos + width*i*1.7 + width*.5, Confidence[i], width=width,
                 color=Colors[2*i + 1], label=labels[2*i + 1])
@@ -1130,7 +1150,6 @@ def bar_chart(Acc, Confidence, Schemes, figsize=(16.5,8.5), validate=False, save
                 color=Colors[2*i + 1], label=labels[2*i + 1])
 
     plt.yticks(fontsize=22)
-    # plt.xticks(x_pos, x, fontsize=24)
     plt.xticks(x_pos + width*1.1, x, fontsize=24)
 
     ax1.set_ylabel(f'Accuracy (%)', fontsize=24)
@@ -1171,3 +1190,30 @@ def bar_chart(Acc, Confidence, Schemes, figsize=(16.5,8.5), validate=False, save
     if save:
         plt.savefig(f'../Figures/Accuracies.png', dpi=1000,
                     transparent=False, bbox_inches='tight')
+
+
+def parse_esp_file(compound):
+    """Esp file parser."""
+    filename = f'{compound}.esp'
+    if os.path.exists(f'ProcessedData/{filename}'):
+        with open(f'ProcessedData/{filename}') as f:
+            data = f.read().splitlines()
+            split_data = np.array([re.split('\s+', line) for i, line in enumerate(data) if i >= 2])
+            atoms = split_data[:, 0]
+            coordinates = np.array(split_data[:, 1:-1], dtype=float)
+            charges = np.array(split_data[:, -1], dtype=float)
+            parsed = []
+            for i in range(len(split_data)):
+                parsed.append({'atom': atoms[i], 'coords': coordinates[i], 'charge': charges[i]})
+            return parsed
+    else:
+        # no esp file available
+        return None
+
+def get_plot_data(atom_list):
+    """Get plotting data and settings for molecule viewer."""
+    points = [atom['coords'] for atom in atom_list]
+    colors = [atom_colorcode[atom['atom']] for atom in atom_list]
+    sizes = [PERIODIC_MAP[atom['atom']]*20 for atom in atom_list]
+    labels = [atom['atom'] for atom in atom_list]
+    return points, colors, sizes, labels
