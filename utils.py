@@ -40,15 +40,15 @@ import umap
 
 # GLOBAL VARIABLES
 CLASSCODES = {
-    'phosphorane': 2,
+    'phosphorane': 11,
     'trialkyl_phosphine': 3,
-    'phosphine_oxide': 4,
+    'phosphine_oxide': 13,
     'phosphinite': 5,
-    'phosphinate': 6,
+    'phosphinate': 15,
     'phosphonite': 9,
-    'phosphonate': 10,
+    'phosphonate': 17,
     'phosphite_ester': 7,
-    'phosphate': 8,
+    'phosphate': 19,
 }
 
 COORDCODES = {
@@ -72,8 +72,8 @@ OHCODES = {
 }
 
 SULFURCODES = {
-    'phosphate': 1,
-    'phosphorothioate': 2,
+    'phosphate': 19,
+    'phosphorothioate': 1,
     'dithiophosphate': 3
 }
 
@@ -931,7 +931,7 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
     N = PCA_all.shape[1]
     explained_var = np.array([np.sum(pca_all.explained_variance_ratio_[:i + 1])
                              for i in range(N)])
-    threshold = np.where(explained_var >= 0.9)[0][0]
+    threshold = np.where(explained_var >= 0.95)[0][0]
 
     pca_reducer = PCA(n_components=threshold + 1)
     PCA_sub = pca_reducer.fit_transform(SPECTRA)
@@ -977,7 +977,7 @@ def make_stacked_scree(xes, xanes, n=None):
             color=plt.cm.tab10(.15), label='VtC-XES')
     ax.plot(x, cdf_xanes, 'o-', markersize=10, color=plt.cm.tab10(0.05),
             label='XANES')
-    ax.plot(x, np.ones(len(x)) * 0.9, 'k--', linewidth=3)
+    ax.plot(x, np.ones(len(x)) * 0.95, 'k--', linewidth=3)
 
     plt.xticks(x, fontsize=18)
     plt.yticks(fontsize=18)
