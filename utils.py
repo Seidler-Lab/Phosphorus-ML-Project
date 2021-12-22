@@ -48,7 +48,7 @@ CLASSCODES = {
     'phosphonite': 9,
     'phosphonate': 17,
     'phosphite_ester': 7,
-    'phosphate': 19,
+    'phosphate': 1,
 }
 
 COORDCODES = {
@@ -72,8 +72,8 @@ OHCODES = {
 }
 
 SULFURCODES = {
-    'phosphate': 19,
-    'phosphorothioate': 1,
+    'phosphate': 1,
+    'phosphorothioate': 19,
     'dithiophosphate': 3
 }
 
@@ -1014,13 +1014,17 @@ def turn_off_ticks(ax):
                    labelleft=False)
 
 
-def get_test_map(filename):
+def get_map_from_file(filename, test=True):
     with open(filename, 'r', newline='') as f:
         lines = f.read().splitlines()
     test_map = {}
     for line in lines:
         cid, coord = line.split(': ')
-        test_map[int(cid)] = int(coord)
+        if test:
+            test_map[int(cid)] = int(coord)
+        else:
+            coords = coord.replace('[', '').replace(']', '').split(' ')
+            test_map[int(cid)] = [float(num) for num in coords if num != '']
     return test_map
 
 def pre_process_train_test_spectra(X_train=None, X_test=None,
@@ -1030,8 +1034,8 @@ def pre_process_train_test_spectra(X_train=None, X_test=None,
     reduced_maps = []
     for X in [X_train, X_test]:
         spectra = np.array([c[f'{mode}_Normalized'] for c in X])
-        PCA = pca_reducer.transform(spectra)
-        reduced_space = trained_reducer.transform(PCA)
+        PCA_feats = pca_reducer.transform(spectra)
+        reduced_space = trained_reducer.transform(PCA_feats)
         reduced_map = {c['CID']: pt for c, pt in zip(X, reduced_space)}
         reduced_maps.append(reduced_map)
     return reduced_maps
@@ -1054,6 +1058,7 @@ def get_ML_datasets(train_map, test_map, **args):
 
     xtest_cids = list(test_map.keys())
     ytest = np.array(list(test_map.values()))
+
     xtest = np.array([test_reduced_map[cid] for cid in xtest_cids])
     xtest = scaler.transform(xtest)
 
@@ -1081,9 +1086,11 @@ def train_GP(X_data, train_map, test_map, Accuracies=[[],[]], Confidence=[[],[]]
              validate=True, **kwargs):
     for mode in ['XES', 'XANES']:
         if mode == 'XES':
-            kernel = RationalQuadratic() + Matern()
+            kernel = RationalQuadratic(alpha_bounds=(1e-05, 1e8), 
+                                       length_scale_bounds=(1e-05, 1e8))
         else:
-            kernel = RationalQuadratic() + Matern()
+            kernel = RationalQuadratic(alpha_bounds=(1e-05, 1e8), 
+                                       length_scale_bounds=(1e-05, 1e8))
 
         X_train = [c for c in X_data if c['CID'] in list(train_map.keys())]
         X_test = [c for c in X_data if c['CID'] in list(test_map.keys())]
@@ -1101,8 +1108,8 @@ def train_GP(X_data, train_map, test_map, Accuracies=[[],[]], Confidence=[[],[]]
                                                                    **training_args)
 
         GP = GaussianProcessClassifier(random_state=42, kernel=kernel)
-
         GP.fit(xtrain, ytrain)
+
         if validate:
             confidence = np.max(GP.predict_proba(xval), axis=1)
             score = GP.score(xval, yval)
@@ -1217,3 +1224,9 @@ def get_plot_data(atom_list):
     sizes = [PERIODIC_MAP[atom['atom']]*20 for atom in atom_list]
     labels = [atom['atom'] for atom in atom_list]
     return points, colors, sizes, labels
+
+def write_file_map(filename, codemap):
+    f = open(filename, "a")
+    for cid, coord in redmap.items():
+        f.write(f'{cid}: {coord}\n')
+    f.close()
