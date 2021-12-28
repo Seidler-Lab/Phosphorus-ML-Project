@@ -1227,6 +1227,6 @@ def get_plot_data(atom_list):
 
 def write_file_map(filename, codemap):
     f = open(filename, "a")
-    for cid, coord in redmap.items():
+    for cid, coord in codemap.items():
         f.write(f'{cid}: {coord}\n')
     f.close()
