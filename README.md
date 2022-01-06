@@ -6,13 +6,13 @@ This repository contains the analysis of Valence to Core X-ray Emission Spectros
 
 ## Abstract
 
-![TOC](Figures/TOC.png)
+<img src="Figures/TOC.png" alt="TOC" width="400"/>
 
 We analyze an ensemble of phosphorganics to understand the full extent of information encoded in their X-ray absorption near edge structure (XANES) and valence-to-core X-ray emission spectra (XES). We develop an analysis framework that utilizes data-driven development of chemical classes via unsupervised machine learning, specifically cluster analysis in the Uniform Manifold Approximation and Projection (UMAP) embedding. These cluster-informed classes indicate spectral sensitivity to coordination, oxidation, aromaticity, intramolecular hydrogen bonding, and ligand identity. Subsequently, we implement supervised machine learning via gaussian process classifiers, which identify confidence in predictions that match our initial qualitative assessments of clustering, further supporting the benefit of using unsupervised machine learning as a precursor to predictions via supervised machine learning. Finally, we develop an open-source python module that allows for efficient and customizable management of molecular structure datasets.
 
 ## Pipeline
 
-![Flowchart](Figures/flowchart.png)
+<img src="Figures/flowchart.png" alt="Flowchart" width="400"/>
 
 ## Structure
 

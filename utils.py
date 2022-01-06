@@ -73,8 +73,8 @@ OHCODES = {
 
 SULFURCODES = {
     'phosphate': 1,
-    'phosphorothioate': 19,
-    'dithiophosphate': 3
+    'phosphorothioate': 3,
+    'dithiophosphate': 7
 }
 
 PERIODIC_TABLE = \
