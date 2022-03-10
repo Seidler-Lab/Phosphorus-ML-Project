@@ -946,7 +946,17 @@ def get_subset_maps(X_data, codemap, mode='XES', perplexity=20,
         reduced_space = reducer.fit_transform(PCA_sub)
     else:
         # umap
-        reducer = umap.UMAP(random_state=42, n_components=ndim)
+        if 'n_neighbors' in kwargs:
+            n_neighbors = kwargs['n_neighbors']
+        else:
+            n_neighbors = 15  # default
+        if 'min_dist' in kwargs:
+            min_dist = kwargs['min_dist']
+        else:
+            min_dist = 0.1  # default
+
+        reducer = umap.UMAP(random_state=42, n_components=ndim,
+                            n_neighbors=n_neighbors, min_dist=min_dist)
         reduced_space = reducer.fit_transform(PCA_sub)
 
     # Make CID->point maps
