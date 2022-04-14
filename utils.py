@@ -64,7 +64,7 @@ COORDCODES = {
 }
 
 OHCODES = {
-    'phosphenic_acid': 4,
+    'phosphenic_acid': 7,
     'phosphinate': 3,
     'half_phosphonic_acid': 9,
     'phosphonic_acid': 2,
@@ -90,6 +90,9 @@ PERIODIC_TABLE = \
      'Hs', 'Mt', 'Ds ', 'Rg ', 'Cn ', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og']
 PERIODIC_MAP = {ele: i + 1 for i, ele in enumerate(PERIODIC_TABLE)}
 
+XES_SCALE = 0
+XANES_SCALE = 0
+
 atom_colorcode = {'P': 'magenta', 'O': 'red', 'C': 'black',
                   'H': 'gray', 'N': 'blue', 'Cl': 'green',
                   'S': 'yellow', 'Br': 'purple'}
@@ -97,6 +100,7 @@ atom_colorcode = {'P': 'magenta', 'O': 'red', 'C': 'black',
 mpl.rcParams['font.family'] = ['sans-serif']
 mpl.rcParams['font.sans-serif'] = ['Arial']
 fontstyle = {'fontname':'Arial'}
+
 
 def colorbynumber(n, a=1, colormap=plt.cm.tab20):
     """Colormap using tab20."""
@@ -106,6 +110,34 @@ def colorbynumber(n, a=1, colormap=plt.cm.tab20):
 def read_tddft_spectrum_file(path):
     """Read spectrum file."""
     return np.loadtxt(path).T
+
+
+def Lorentzian(x, xc, gamma):
+    """ Return Lorentzian line shape at x with HWHM gamma """
+    return gamma / np.pi / ((x - xc)**2 + gamma**2)
+
+
+def spectrum_from_transitions(transitions, lorentz_ev=1, erange=None,
+                              numpoints=1000, peaknorm=True):
+    x, y = transitions
+    if erange is not None:
+        good = np.logical_and(x >= erange[0], x <= erange[1])
+        x, y = x[good], y[good]
+        x_eval = np.linspace(erange[0], erange[1], numpoints)
+    else:
+        xmin = np.min(x)
+        xmax = np.max(x)
+        padding = (xmax - xmin) / 2
+        x_eval = np.linspace(xmin - padding, xmax + padding, numpoints)
+
+    spectrum = np.zeros_like(x_eval)
+    for e, a in zip(x, y):
+        spectrum += a * Lorentzian(x_eval, e, lorentz_ev/2)
+
+    if peaknorm:
+        spectrum = spectrum / np.max(spectrum)
+
+    return np.array([x_eval, spectrum])
 
 
 def exclude_None_class(ele):
@@ -171,6 +203,7 @@ def get_Data(cidlistdir, exclude_Nonetype_normalization=True):
                                if compound['Class'] is not None])
     XES_scalefactor = np.max([compound['XES_Spectra'][1] for compound in Data
                              if compound['Class'] is not None])
+
     for c in Data:
         c['XANES_Normalized'] = c['XANES_Spectra'][1] / XANES_scalefactor
         c['XES_Normalized'] = c['XES_Spectra'][1] / XES_scalefactor
@@ -262,7 +295,8 @@ def resize_img(pil_img, ratio=(1,1), background_color=(255, 255, 255, 0)):
         return background
 
 
-def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False):
+def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False,
+                  h_ratios=(0.19, 0.12), w_ratios=(0.1, 0.1), corner=1):
     if chemdraw:
         img = Image.open(f"../Figures/chemdraw/{cid}.png")
         structure = img
@@ -281,27 +315,36 @@ def add_structure(fig, cid, ax, resize=False, add_axes=False, chemdraw=False):
         # structure = resize_img(structure)
     else:
         if width > height:
-            desired_w_ratio = 0.1
-            desired_width = desired_w_ratio*size[0]
-            ratio = desired_width/width
+            if width / height > 2.0:
+                desired_w_ratio = w_ratios[0]
+            else:
+                desired_w_ratio = w_ratios[1]
+            desired_width = desired_w_ratio * size[0]
+            ratio = desired_width / width
             structure = structure.resize((int(desired_width), int(height*ratio)),
-                                             Image.ANTIALIAS)
+                                          Image.ANTIALIAS)
             w_ratio = structure.size[0]/size[0]
             h_ratio = structure.size[1]/size[1]
         else:
-            if height/width > 1.3:
-                desired_h_ratio = 0.19
+            if height / width > 1.3:
+                desired_h_ratio = h_ratios[0]
             else:
-                desired_h_ratio = 0.12
-            desired_height = desired_h_ratio*size[1]
-            ratio = desired_height/height
+                desired_h_ratio = h_ratios[1]
+            desired_height = desired_h_ratio * size[1]
+            ratio = desired_height / height
             structure = structure.resize((int(width*ratio), int(desired_height)),
-                                             Image.ANTIALIAS)
+                                          Image.ANTIALIAS)
             w_ratio = structure.size[0]/size[0]
             h_ratio = structure.size[1]/size[1]
     if add_axes:
-        subax = fig.add_axes([bbox.x1/size[0] - w_ratio, bbox.y1/size[1] - h_ratio,
-                              w_ratio, h_ratio], anchor='SE')
+        pos = ax.get_position()
+        if corner == 1:
+            pos_prime = [bbox.x1 / size[0] - w_ratio,
+                         bbox.y1 / size[1] - h_ratio, 
+                         w_ratio, h_ratio]
+        else:
+            pos_prime = [pos.x0, pos.y0 + pos.height - h_ratio, w_ratio, h_ratio] 
+        subax = fig.add_axes(pos_prime, anchor='SE')
     else:
         subax = ax
     subax.imshow(structure)
@@ -358,7 +401,7 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
 
     if link_pubchem:
         add_structure(fig, cid, ax, resize=resize, add_axes=True,
-                     chemdraw=chemdraw)
+                      chemdraw=chemdraw)
     else:
         legend = ax.legend([cid], handlelength=0, handletextpad=0,
                            fancybox=True, fontsize=fontsize+6)
@@ -371,11 +414,11 @@ def plot_spectrum_and_trans(plot, compoundmap, cid, mode='XES', color=1, label=N
             bbox=dict(boxstyle="round,pad=0.3", ec=plt.cm.tab20(color), fc="w", lw=5))
 
 
-def plot_spectrum(spectrum, compound, verbose=True, label=None):
+def plot_spectrum(plot, spectrum, compound, verbose=True, label=None):
     """Just plot spectrum."""
     x, y = spectrum
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plot
 
     ax.plot(x, y, 'k-', linewidth=2, label=compound)
 
@@ -396,7 +439,28 @@ def plot_spectrum(spectrum, compound, verbose=True, label=None):
                            fancybox=True, fontsize=22)
         for item in legend.legendHandles:
             item.set_visible(False)
-    plt.show()
+
+
+def add_spectrum(plot, spectrum, compound, color='k', erange=None,
+                 verbose=True, label=None, loc=2):
+    """Just plot spectrum."""
+    x, y = spectrum
+    fig, ax = plot
+    ax.plot(x, y, '-', c=color, linewidth=2, label=label)
+
+    ax.set_xlabel('Energy (eV)', fontsize=17)
+    ax.tick_params(labelsize=17)
+    
+    ax.set_xlim(erange)
+
+    if verbose:
+        ax.xaxis.set_minor_locator(MultipleLocator(5))
+        ax.xaxis.set_major_locator(MultipleLocator(10))
+        ax.tick_params(direction='out', width=3, length=10, which='major')
+        ax.tick_params(direction='out', width=2, length=8, which='minor')
+        ax.set_yticks([])
+    
+    leg = ax.legend(fontsize=16, loc=loc, title=f'{compound}', title_fontsize=18)
 
 
 def esnip(trans, mode='XES'):
@@ -501,7 +565,7 @@ def checkmode(mode):
 
 
 def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
-                   mode='XANES', energyrange=None, hiddenalpha=0.01,
+                   mode='XANES', energyrange=None, hiddenalpha=0.01, spacing=0,
                    hiddencids=None, colormap=plt.cm.tab20, coloralpha=1,
                    linewidth=1, scale=False, average_bins=False, scalecolor=True,
                    fontsize=22, large_ticks=True, verbose=True, **kwargs):
@@ -601,11 +665,12 @@ def plot_spaghetti(plot, compoundmap, colorcodemap=None, binmap=None,
             # actually plot lines
             energy = X_data[0][f'{mode}_Spectra'][0]
             lines.append(plt.plot(energy,
-                                  avg_spectra, '-',
+                                  avg_spectra + spacing*bin_num, '-',
                                   color=color, linewidth=linewidth,
                                   label=(str(bin_num))[0]))
             # ax.fill_between(energy, min_spectra, max_spectra,
             #                 color=color, alpha=0.2)
+        plt.plot([energy[-1]], [spacing * (bin_num + 1.85)], 'w.')
 
 
     num_bins = max(np.unique(list(binmap.values())))
