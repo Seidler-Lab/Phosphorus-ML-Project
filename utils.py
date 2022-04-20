@@ -1305,3 +1305,23 @@ def write_file_map(filename, codemap):
     for cid, coord in codemap.items():
         f.write(f'{cid}: {coord}\n')
     f.close()
+
+def get_xy_range_from_space(space, buffer=0.05):
+    xmin, xmax = np.min(space[:, 0]), np.max(space[:, 0])
+    ymin, ymax = np.min(space[:, 1]), np.max(space[:, 1])
+    xranged = xmax - xmin
+    yranged = ymax - ymin
+    xlim = (xmin - buffer * xranged, xmax + buffer * xranged)
+    ylim = (ymin - buffer * yranged, ymax + buffer * yranged)
+    return xlim, ylim, xlim[1] - xlim[0], ylim[1] - ylim[0]
+
+def get_xy_range_from_ax(ax, buffer=0.05):
+    total_xlim = ax.get_xlim() 
+    total_xrange = total_xlim[1] - total_xlim[0]
+    total_ylim = ax.get_ylim()
+    total_yrange = total_ylim[1] - total_ylim[0]
+    xlim = (total_xlim[0] - total_xrange * buffer,
+            total_xlim[1] + total_xrange * buffer)
+    ylim = (total_ylim[0] - total_yrange * buffer,
+            total_ylim[1] + total_yrange * buffer)
+    return xlim, ylim, xlim[1] - xlim[0], ylim[1] - ylim[0]
