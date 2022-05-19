@@ -73,7 +73,7 @@ OHCODES = {
 
 SULFURCODES = {
     'phosphate': 1,
-    'phosphorothioate': 3,
+    'phosphorothioate': 5,
     'dithiophosphate': 7
 }
 
