@@ -5,7 +5,9 @@ This repository contains the analysis of Valence to Core X-ray Emission Spectros
 #### Authors: Samantha Tetef and Vikram Kashyap
 
 This research appeared in the following:
+
 [*Journal of Physical Chemistry A*, doi.org:10.1021/acs.jpca.2c03635](https://doi.org/10.1021/acs.jpca.2c03635)
+
 [ChemRxiv](https://chemrxiv.org/engage/chemrxiv/article-details/621402950c0bf00f69f1ac0c)
 
 ## Abstract
